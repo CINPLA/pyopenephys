@@ -3,4 +3,4 @@
 [![codecov](https://codecov.io/gh/CINPLA/py-open-ephys/branch/master/graph/badge.svg)](https://codecov.io/gh/CINPLA/py-open-ephys)
 
 # py-open-ephys
-Python reader for open ephys
+Python reader for open ephys in python

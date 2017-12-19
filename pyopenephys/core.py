@@ -30,7 +30,7 @@ import struct
 import platform
 import xml.etree.ElementTree as ET
 from xmljson import yahoo as yh
-from tools import *
+from pyopenephys.tools import *
 
 # TODO related files
 # TODO append .continuous files directly to file and memory map in the end

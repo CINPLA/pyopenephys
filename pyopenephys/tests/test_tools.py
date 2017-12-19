@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from expipe_io_neuro.openephys.tools import _start_from_zero_time, _zeros_to_nan, _cut_to_same_len
+from pyopenephys.tools import _start_from_zero_time, _zeros_to_nan, _cut_to_same_len
 
 def test_start_from_zero_time():
     t = np.arange(11)

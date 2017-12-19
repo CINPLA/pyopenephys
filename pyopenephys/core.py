@@ -6,6 +6,7 @@ Depends on: sys
             datetime
             numpy
             quantities
+            xmljson
 
 Authors: Alessio Buccino @CINPLA,
          Svenn-Arne Dragly @CINPLA,
@@ -13,7 +14,7 @@ Authors: Alessio Buccino @CINPLA,
          Mikkel E. Lepperod @CINPLA
 """
 
-# TODO: add extensive funciton descrption and verbose option for prints
+# TODO: add extensive function descrption and verbose option for prints
 
 from __future__ import division
 from __future__ import print_function
@@ -27,18 +28,14 @@ from datetime import datetime
 import locale
 import struct
 import platform
-from .tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
-                    readHeader, loadSpikes, clip_digs, clip_times,
-                    clip_tracking, find_nearest, get_number_of_records,
-                    read_analog_continuous_signal, read_analog_binary_signals,
-                    _start_from_zero_time, assign_ttl)
+import xml.etree.ElementTree as ET
+from xmljson import yahoo as yh
+from tools import *
 
 # TODO related files
 # TODO append .continuous files directly to file and memory map in the end
 # TODO ChannelGroup class - needs probe file
 # TODO Channel class
-
-
 # TODO add SYNC and TRACKERSTIM metadata
 
 
@@ -51,18 +48,10 @@ class Channel:
 
 
 class AnalogSignal:
-    def __init__(self, channel_id, signal, sample_rate):
+    def __init__(self, channel_id, signal, times):
         self.signal = signal
         self.channel_id = channel_id
-        self.sample_rate = sample_rate
-
-    @property
-    def times(self):
-        if self.signal.shape[0] > 0:
-            nsamples = self.signal.shape[1]
-            return np.arange(nsamples) / self.sample_rate
-        else:
-            return np.array([])
+        self.times = times
 
     def __str__(self):
         return "<OpenEphys analog signal:shape: {}, sample_rate: {}>".format(
@@ -95,14 +84,17 @@ class Sync:
 
 
 class TrackingData:
-    def __init__(self, times, positions, attrs):
-        self.attrs = attrs
+    def __init__(self, times, x, y, width, height, channels, metadata):
         self.times = times
-        self.positions = positions
-
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.channels = channels
+        self.metadata = metadata
     def __str__(self):
         return "<OpenEphys tracking data: times shape: {}, positions shape: {}>".format(
-            self.times.shape, self.positions.shape
+            self.times.shape, self.x.shape
         )
 
 
@@ -140,7 +132,7 @@ class SpikeTrain:
         """
         return self.channel_count
 
-
+#todo fix channels where they belong!
 class ChannelGroup:
     def __init__(self, channel_group_id, filename, channels,
                  fileclass=None, **attrs):
@@ -176,44 +168,78 @@ class File:
     Class for reading experimental data from an OpenEphys dataset.
     """
     def __init__(self, foldername, probefile=None):
-        import xml.etree.ElementTree as ET
-        from xmljson import yahoo as yh
         # TODO assert probefile is a probefile
         # TODO add default prb map and allow to add it later
         self._absolute_foldername = foldername
         self._path, relative_foldername = os.path.split(foldername)
-        self._analog_signals_dirty = True
-        self._digital_signals_dirty = True
-        self._channel_groups_dirty = True
-        self._spiketrains_dirty = True
-        self._tracking_dirty = True
-        self._events_dirty = True
-        self._times = []
-        self._duration = []
+        self._experiments_names = [f for f in os.listdir(self._absolute_foldername)
+                                   if os.path.isdir(op.join(self._absolute_foldername, f))
+                                   and 'experiment' in f]
+        self._exp_ids = [int(exp[-1]) for exp in self._experiments_names]
+        self._experiments = []
 
+        for (rel_path, id) in zip(self._experiments_names, self._exp_ids):
+            self._experiments.append(Experiment(op.join(self._absolute_foldername, rel_path), id, probefile))
+
+    @property
+    def session(self):
+        return os.path.split(self._absolute_foldername)[-1]
+
+    @property
+    def datetime(self):
+        return self._start_datetime
+
+    @property
+    def experiments(self):
+        return self._experiments
+
+
+class Experiment:
+    def __init__(self, path, id, probefile=None):
+        self._recordings = []
+        self._prb_file = probefile
+        self._absolute_foldername = path
+        self._absolute_parentfolder = op.dirname(path)
+        self.id = id
+        self.sig_chain = dict()
+
+        self._read_settings(id)
+        self._recording_names = [f for f in os.listdir(self._absolute_foldername)
+                                   if os.path.isdir(op.join(self._absolute_foldername, f))
+                                   and 'recording' in f]
+        self._rec_ids = [int(rec[-1]) for rec in self._recording_names]
+        for (rel_path, id) in zip(self._recording_names, self._rec_ids):
+            self._recordings.append(Recording(op.join(self._absolute_foldername, rel_path), id,
+                                              self.sig_chain, self._prb_file))
+
+    def _read_settings(self, id):
+        print('Loading Open-Ephys: reading settings.xml...')
+        if id == 1:
+            set_fname = [fname for fname in os.listdir(self._absolute_parentfolder)
+                         if fname == 'settings.xml']
+        else:
+            set_fname = [fname for fname in os.listdir(self._absolute_parentfolder)
+                         if fname.startswith('settings') and fname.endswith('.xml') and str(id) in fname]
         self.rhythm = False
         self.rhythmID = []
-        rhythmRates = np.array([1., 1.25, 1.5, 2, 2.5, 3, 3.33, 4., 5., 6.25,
-                                8., 10., 12.5, 15., 20., 25., 30.])
-        self.osc = False
-        self.oscInfo = []
-        self.tracking_timesamples_rate = 1000 * 1000. * pq.Hz
+        # rhythmRates = np.array([1., 1.25, 1.5, 2, 2.5, 3, 3.33, 4., 5., 6.25,
+        #                         8., 10., 12.5, 15., 20., 25., 30.])
+        self.track_port = False
+        self.track_portID = []
+        self.track_portInfo = dict()
 
         self.track_stim = False
         self.track_stimInfo = []
 
+        self.fileReader = False
+
         self.sync = False
         self.syncID = []
 
-        self.__dict__.update(self._read_messages())
-
-        print('Loading Open-Ephys: reading settings.xml...')
-        set_fname = [fname for fname in os.listdir(self._absolute_foldername)
-                     if fname.startswith('settings') and fname.endswith('.xml')]
         if not len(set_fname) == 1:
             raise IOError('Unique settings file not found')
 
-        self._set_fname = op.join(self._absolute_foldername, set_fname[0])
+        self._set_fname = op.join(self._absolute_parentfolder, set_fname[0])
         with open(self._set_fname) as f:
             xmldata = f.read()
             self.settings = yh.data(ET.fromstring(xmldata))['SETTINGS']
@@ -242,7 +268,7 @@ class File:
             else:
                 processor_iter = [sigchain['PROCESSOR']]
             for processor in processor_iter:
-                # print(processor['name'])
+                self.sig_chain.update({processor['name']: True})
                 if processor['name'] == 'Sources/Rhythm FPGA':
                     if FPGA_count > 0:
                         raise NotImplementedError
@@ -260,34 +286,37 @@ class File:
                             self.nchan += 1
                             chnum = chan['number']
                             self._channel_info['gain'][chnum] = gain[chnum]
-                        sampleIdx = int(processor['EDITOR']['SampleRate'])-1
-                        self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                if processor['name'] == 'Sources/OSC Port':
-                    self.osc = True
-                    self.oscInfo.append({
-                        'oscID': processor['NodeId'],
-                        'oscPort': processor['EDITOR']['OSCNODE']['port'],
-                        'oscAddress': processor['EDITOR']['OSCNODE']['address'],
-                    })
+
+                # debug
+                if processor['name'] == 'Sources/File Reader':
+                    if FPGA_count > 0:
+                        raise NotImplementedError
+                        # TODO can there be multiple FPGAs ?
+                    FPGA_count += 1
+                    self._channel_info['gain'] = {}
+                    self.fileReader = True
+                    self.fileReaderID = processor['NodeId']
+                    for chan in processor['CHANNEL']:
+                        if chan['SELECTIONSTATE']['record'] == '1':
+                            self.nchan += 1
+                if processor['name'] == 'Sources/Tracking Port':
+                    self.track_port = True
+                    self.track_portID = processor['NodeId']
+                    self.track_portInfo.update(processor['TrackingNode'])
                 if processor['name'] == 'Sources/Sync Port':
                     self.sync = True
                     self.syncID = processor['NodeId']
                 if processor['name'] == 'Sinks/Tracker Stimulator':
                     self.track_stim = True
                     self.track_stimID = processor['NodeId']
-                    if 'TRACKERSTIMULATOR' in processor.keys():
-                        #old version
-                        self.track_stimInfo = dict()
-                        self.track_stimInfo.update(processor['TRACKERSTIMULATOR'])
-                    else:
-                        #new version
-                        self.track_stimInfo = dict()
-                        self.track_stimInfo['circles'] = processor['CIRCLES']
-                        self.track_stimInfo['channels'] = processor['CHANNELS']
-                        self.track_stimInfo['output'] = processor['SELECTEDCHANNEL']
-                        self.track_stimInfo['sync'] = {'ttl': processor['EDITOR']['TRACKERSTIMULATOR']['syncTTLchan'],
-                                                       'output': processor['EDITOR']['TRACKERSTIMULATOR']['syncStimchan']}
-
+                    # new version
+                    self.track_stimInfo = dict()
+                    self.track_stimInfo['circles'] = processor['CIRCLES']
+                    self.track_stimInfo['channels'] = processor['CHANNELS']
+                    self.track_stimInfo['output'] = processor['SELECTEDCHANNEL']
+                    self.track_stimInfo['sync'] = {'ttl': processor['EDITOR']['TRACKERSTIMULATOR']['syncTTLchan'],
+                                                   'output': processor['EDITOR']['TRACKERSTIMULATOR'][
+                                                       'syncStimchan']}
 
         # Check openephys format
         if self.settings['CONTROLPANEL']['recordEngine'] == 'OPENEPHYS':
@@ -300,26 +329,27 @@ class File:
 
         if self.rhythm:
             print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
-        if self.osc:
-            print('OSC Port. NodeId: ', [osc['oscID'] for osc in self.oscInfo])
+        if self.track_port:
+            print('Tracking Port. NodeId: ', self.track_portID)
 
-        if self.rhythm:
+        if self.rhythm or self.fileReader:
             recorded_channels = sorted([int(chan) for chan in
                                         self._channel_info['gain'].keys()])
             self._channel_info['channels'] = recorded_channels
-            if probefile is not None:
+            if self._prb_file is not None:
                 self._keep_channels = []
-                self._probefile_ch_mapping = _read_python(probefile)['channel_groups']
+                self._probefile_ch_mapping = _read_python(self._prb_file)['channel_groups']
                 for group_idx, group in self._probefile_ch_mapping.items():
                     group['gain'] = []
-                    # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
+                    # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection
+                    # -> Collapse them into array
                     for chan, oe_chan in zip(group['channels'],
                                              group['oe_channels']):
                         if oe_chan not in recorded_channels:
                             raise ValueError('Channel "' + str(oe_chan) +
                                              '" in channel group "' +
                                              str(group_idx) + '" in probefile' +
-                                             probefile +
+                                             self._prb_file +
                                              ' is not marked as recorded ' +
                                              'in settings file' +
                                              self._set_fname)
@@ -329,24 +359,82 @@ class File:
                         self._keep_channels.append(recorded_channels.index(oe_chan))
                 print('Number of selected channels: ', len(self._keep_channels))
             else:
-                self._keep_channels = None # HACK
+                self._keep_channels = None  # HACK
+                # TODO sequential channel mapping
+                print('sequential channel mapping')
+        else:
+            self._keep_channels = None
+
+        if self.fileReader:
+            recorded_channels = sorted([int(chan) for chan in
+                                        self._channel_info['gain'].keys()])
+            self._channel_info['channels'] = recorded_channels
+            if self._prb_file is not None:
+                self._keep_channels = []
+                self._probefile_ch_mapping = _read_python(self._prb_file)['channel_groups']
+                for group_idx, group in self._probefile_ch_mapping.items():
+                    group['gain'] = []
+                    # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
+                    for chan, oe_chan in zip(group['channels'],
+                                             group['oe_channels']):
+                        if oe_chan not in recorded_channels:
+                            raise ValueError('Channel "' + str(oe_chan) +
+                                             '" in channel group "' +
+                                             str(group_idx) + '" in probefile' +
+                                             self._prb_file +
+                                             ' is not marked as recorded ' +
+                                             'in settings file' +
+                                             self._set_fname)
+                        group['gain'].append(
+                            self._channel_info['gain'][str(oe_chan)]
+                        )
+                        self._keep_channels.append(recorded_channels.index(oe_chan))
+                print('Number of selected channels: ', len(self._keep_channels))
+            else:
+                self._keep_channels = None  # HACK
                 # TODO sequential channel mapping
                 print('sequential channel mapping')
 
-    @property
-    def session(self):
-        return os.path.split(self._absolute_foldername)[-1]
+        self.sig_chain.update({'format': self._format, 'nchan': self.nchan, 'keep_channels': self._keep_channels})
 
     @property
-    def datetime(self):
-        return self._start_datetime
+    def recordings(self):
+        return self._recordings
+
+
+class Recording:
+    def __init__(self, path, id, sig_chain, probefile=None):
+        self.absolute_foldername = path
+        self.prb_file = probefile
+        self.sig_chain = sig_chain
+        self._format = sig_chain['format']
+        self._keep_channels = sig_chain['keep_channels']
+        self.nchan = sig_chain['nchan']
+        self.id = id
+
+        self._analog_signals_dirty = True
+        self._digital_signals_dirty = True
+        self._channel_groups_dirty = True
+        self._spiketrains_dirty = True
+        self._tracking_dirty = True
+        self._events_dirty = True
+        self._times = []
+        self._duration = []
+
+        self._analog_signals = []
+        self._digital_signals = []
+        self._tracking_signals = []
+        self._messages_signals = []
+
+        self.__dict__.update(self._read_sync_message())
+
 
     @property
     def duration(self):
         if self.rhythm:
             self._duration = (self.analog_signals[0].signal.shape[1] /
                               self.analog_signals[0].sample_rate)
-        elif self.osc:
+        elif self.track_port:
             self._duration = self.tracking[0].times[0][-1] - self.tracking[0].times[0][0]
         else:
             self._duration = 0
@@ -355,15 +443,14 @@ class File:
 
     @property
     def sample_rate(self):
-        if self.rhythm:
-            return self._sample_rate
+        if self.processor:
+            return self._processor_sample_rate
         else:
             return self._software_sample_rate
 
     def channel_group(self, channel_id):
         if self._channel_groups_dirty:
             self._read_channel_groups()
-
         return self._channel_id_to_channel_group[channel_id]
 
     @property
@@ -413,63 +500,63 @@ class File:
         if self._tracking_dirty:
             self._read_tracking()
 
-        return self._tracking
+        return self._tracking_signals
 
     @property
     def times(self):
         if self.rhythmID:
             self._times = self.analog_signals[0].times
-        elif self.osc:
+        elif self.track_port:
             self._times = self.tracking[0].times[0]
         else:
             self._times = []
 
         return self._times
 
-    def _read_messages(self):
-        filenames = [f for f in os.listdir(self._absolute_foldername)]
-        if not any('.eventsmessages' in f for f in filenames):
-            raise ValueError("'.eventsmessages' should be in the folder")
-
-        messagefile = [f for f in filenames if '.eventsmessages' in f][0]
-        info = {'messages': []}
+    def _read_sync_message(self):
+        info = dict()
         stimes = []
-        softtime = []
-        with open(op.join(self._absolute_foldername, messagefile), "r") as fh:
+        sync_messagefile = [f for f in os.listdir(self.absolute_foldername) if 'sync_messages' in f][0]
+        with open(op.join(self.absolute_foldername, sync_messagefile), "r") as fh:
             while True:
                 spl = fh.readline().split()
                 if not spl:
                     break
                 if 'Software' in spl:
+                    self.processor = False
                     stime = spl[-1].split('@')
-                    # stime = stime.split('@')
-                    info['start_timestamp'] = int(stime[0])
-                    softtime = int(stime[0])
                     hz_start = stime[-1].find('Hz')
                     sr = float(stime[-1][:hz_start]) * pq.Hz
                     info['_software_sample_rate'] = sr
-                    self._software_sample_rate = sr
+                    info['_software_start_time'] = int(stime[0])
                 elif 'Processor:' in spl:
-                    stimes.append(int(spl[0]))
-                    sr = spl[-1].split('@')[-1]
-                    hz_start = sr.find('Hz')
-                    sample_rate = float(sr[:hz_start]) * pq.Hz
-                    print(sample_rate)
-                    info['start_timestamp'] = int(spl[0])
+                    self.processor = True
+                    stime = spl[-1].split('@')
+                    hz_start = stime[-1].find('Hz')
+                    stimes.append(float(stime[-1][:hz_start]))
+                    sr = float(stime[-1][:hz_start]) * pq.Hz
+                    info['_processor_sample_rate'] = sr
+                    info['_processor_start_time'] = int(stime[0])
                 else:
                     message = {'time': int(spl[0]),
                                'message': ' '.join(spl[1:])}
                     info['messages'].append(message)
         if any(np.diff(np.array(stimes, dtype=int))):
             raise ValueError('Found different processor start times')
-        for message in info['messages']:
-            if len(stimes) != 0:
-                time = (message['time'] - stimes[0]) / self.sample_rate
-            else:
-                time = (message['time'] - softtime) / self.sample_rate
-            message['time'] = round(time.rescale('s'), 3)
-
         return info
+
+    def _read_messages(self):
+        events_folder = [op.join(self.absolute_foldername, f)
+                         for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
+        message_folder = [op.join(events_folder, f) for f in os.listdir(events_folder)
+                           if 'Message_Center' in f][0]
+        text_groups = [f for f in os.listdir(message_folder)]
+        if self._format == 'binary':
+            for tg in text_groups:
+                text = np.load(op.join(message_folder, tg, 'text.npy'))
+                ts = np.load(op.join(message_folder, tg, 'timestamps.npy'))
+                channels = np.load(op.join(message_folder, tg, 'channels.npy'))
+
 
     def _read_channel_groups(self):
         self._channel_id_to_channel_group = {}
@@ -510,140 +597,56 @@ class File:
         self._channel_groups_dirty = False
 
     def _read_tracking(self):
-        filenames = [f for f in os.listdir(self._absolute_foldername)]
-        if self.osc is True and any('.eventsbinary' in f for f in filenames):
-            posfile = [f for f in filenames if '.eventsbinary' in f][0]
-            print('.eventsbinary: ', posfile)
-            with open(op.join(self._absolute_foldername, posfile), "rb") as fh: #, encoding='utf-8', errors='ignore') as fh:
-                self._read_tracking_events(fh)
-        else:
-            raise ValueError("'.eventsbinary' should be in the folder")
+        if 'Sources/Tracking Port' in self.sig_chain.keys():
+            # Check and decode files
+            events_folder = [op.join(self.absolute_foldername, f)
+                                 for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
+            tracking_folder = [op.join(events_folder, f) for f in os.listdir(events_folder)
+                                if 'Tracking_Port' in f][0]
+            binary_groups = [f for f in os.listdir(tracking_folder)]
+            if self._format == 'binary':
+                import struct
+                for bg in binary_groups:
+                    data_array = np.load(op.join(tracking_folder, bg, 'data_array.npy'))
+                    ts = np.load(op.join(tracking_folder, bg, 'timestamps.npy'))
+                    channels = np.load(op.join(tracking_folder, bg, 'channels.npy'))
+                    metadata = np.load(op.join(tracking_folder, bg, 'metadata.npy'))
+                    data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
-    def _read_tracking_events(self, fh):
-        print('Reading positions...')
+                    ts = ts / float(self.sample_rate)
+                    x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
 
-        # TODO consider NOT writing header from openephys
-        header = readHeader(fh)
+                    tracking_data = TrackingData(
+                            times=ts,
+                            x=x,
+                            y=y,
+                            channels=channels,
+                            metadata=metadata,
+                            width=w,
+                            height=h
+                        )
 
-        if float(header['version']) < 0.4:
-            raise Exception('Loader is only compatible with .events files with version 0.4 or higher')
-
-        struct_fmt = '=Bq4f'  # uchar, int64, 4floats
-        struct_len = struct.calcsize(struct_fmt)
-        struct_unpack = struct.Struct(struct_fmt).unpack_from
-
-        nsamples = (os.fstat(fh.fileno()).st_size -fh.tell()) // struct_len
-        print('Estimated position samples: ', nsamples)
-        nread = 0
-
-        read_data=[]
-        while True:
-            bytes = fh.read(struct_len)
-            if not bytes:
-                break
-            try:
-                s = struct_unpack(bytes)
-                read_data.append(s)
-                nread+=1
-            except Exception:
-                print('Data were not in the right format: loading as many samples as possible')
-                break
-
-
-        print('Read position samples: ', nread)
-
-        ids, timestamps, x, y, w, h = zip(*read_data)
-        ids = np.array(ids)
-        timestamps = np.array(timestamps)
-        x = np.array(x)
-        y = np.array(y)
-        w = np.array(w)
-        h = np.array(h)
-
-        ts = timestamps / 1000. * pq.s
-
-        # Sort out different Sources
-        if len(np.unique(ids)) == 1:
-            print("Single tracking source")
-
-            difft = np.diff(ts)
-            avg_period = np.mean(difft)
-            sample_rate_s = 1. / float(avg_period) * pq.Hz
-            x, y, ts = _cut_to_same_len(x, y, ts)
-            ts, (x, y) = _start_from_zero_time(ts, x, y)
-            for i, (xx, yy) in enumerate(zip(x, y)):
-                if xx == yy and xx == 0:
-                    x[i] = np.nan
-                    y[i] = np.nan
-
-            coord_s = [np.array([x, y])]
-            ts_s = [ts]
-
-            width_s = np.mean(w)
-            height_s = np.mean(h)
-
-            attrs = dict()
-            attrs['sample_rate'] = sample_rate_s
-            attrs['length_scale'] = np.array([width_s, height_s])
-            attrs['oscInfo'] = self.oscInfo.pop()
-
-        else:
-            print("Multiple tracking sources")
-            sources = np.unique(ids)
-            coord_s, w_s, h_s, ts_s = [], [], [], []
-            sample_rate_s, width_s, height_s = [], [], []
-            for ss in sources:
-                x_ = np.squeeze(x[np.where(ids==ss)])
-                y_ = np.squeeze(y[np.where(ids==ss)])
-                w_ = np.squeeze(w[np.where(ids==ss)])
-                h_ = np.squeeze(h[np.where(ids==ss)])
-                ts_ = np.squeeze(ts[np.where(ids==ss)])
-                difft = np.diff(ts_)
-                avg_period = np.mean(difft)
-                sample_rate_ = 1. / float(avg_period) * pq.Hz
-
-                # Camera (0,0) is top left corner -> adjust y
-                # coord_ = np.array([x_, 1-y_])
-                x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                # ts_, (x_, y_) = _start_from_zero_time(ts_, x_, y_)
-                for i, (xx, yy) in enumerate(zip(x_, y_)):
-                    if xx == yy and xx == 0:
-                        x_[i] = np.nan
-                        y_[i] = np.nan
-
-                coord_ = np.array([x_, y_])
-                coord_s.append(coord_)
-                ts_s.append(ts_)
-
-                sample_rate_s.append(sample_rate_)
-                width_s.append(np.mean(w_))
-                height_s.append(np.mean(h_))
-            attrs = dict()
-            attrs['sample_rate'] = np.array(sample_rate_s)
-            attrs['length_scale'] = np.transpose(np.array([width_s, height_s]))
-            attrs['oscInfo'] = self.oscInfo
-
-        tracking_data = [TrackingData(
-            times=ts_s,
-            positions=coord_s,
-            attrs=attrs
-        )]
-
-        self._tracking = tracking_data
-        self._tracking_dirty = False
+                    self._tracking_signals.append(tracking_data)
+                self._tracking_dirty = False
 
     def _read_analog_signals(self):
-        if self.rhythm:
+        if self.processor:
             # Check and decode files
-            filenames = [f for f in os.listdir(self._absolute_foldername)]
+            continuous_folder = [op.join(self.absolute_foldername, f)
+                                 for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
+            processor_folder = [op.join(continuous_folder, f) for f in os.listdir(continuous_folder)
+                                if 'File_Reader' in f or 'RhythmFPGA' in f][0]
+
+            filenames = [f for f in os.listdir(processor_folder)]
             if self._format == 'binary':
                 if any('.dat' in f for f in filenames):
-                    datfile = [f for f in filenames if '.dat' in f and 'experiment' in f][0]
+                    datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
                     print('.dat: ', datfile)
-                    with open(op.join(self._absolute_foldername, datfile), "rb") as fh:
+                    with open(op.join(processor_folder, datfile), "rb") as fh:
                         anas, nsamples = read_analog_binary_signals(fh, self.nchan)
+                    ts = np.load(op.join(processor_folder, 'timestamps.npy')) / self.sample_rate
                 else:
-                    raise ValueError("'experiment_###.dat' should be in the folder")
+                    raise ValueError("'continuous.dat' should be in the folder")
             elif self._format == 'openephys':
                 # Find continuous CH data
                 contFiles = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f]
@@ -673,13 +676,13 @@ class File:
             self._analog_signals = [AnalogSignal(
                 channel_id=range(anas_keep.shape[0]),
                 signal=anas_keep,
-                sample_rate=self.sample_rate
+                times=ts
             )]
         else:
             self._analog_signals = [AnalogSignal(
                 channel_id=np.array([]),
                 signal=np.array([]),
-                sample_rate=self.sample_rate
+                times=np.array([])
             )]
 
         self._analog_signals_dirty = False
@@ -874,119 +877,3 @@ class File:
             self._duration = self._times[-1] - self._times[0]
         else:
             print('Empty clipping times list.')
-
-    def sync_tracking_from_events(self, ttl_events, parallel=False, nprocesses=None):
-        """Synchronizes tracking timestamps with ttl signal provided.
-
-        Parameters
-        ----------
-        ttl_events : quantity np.array
-                     array with ttl timestamps
-        parallel: bool
-                  parallel processing or not
-        nprocesses: int
-                    number of parallel processes
-
-        Returns
-        -------
-        """
-        positions = []
-        times = []
-        ttl_id = []
-
-        print('Syncing tracking timestamps')
-        if not parallel:
-            for t, (pos, software_ts) in enumerate(zip(self.tracking[0].positions, self.tracking[0].times)):
-                timestamps, ttl_idxs = assign_ttl(software_ts, ttl_events)
-
-                order = np.argsort(ttl_idxs)
-                wrong_ts_idx = np.where(np.diff(order) <= 0)[0]
-                print('Reassigning incorrect ',
-                                len(wrong_ts_idx), ' out of ', len(software_ts))
-                if len(wrong_ts_idx) != 0:
-                    print('Reassigning incorrect ',
-                          len(wrong_ts_idx), ' out of ', len(software_ts))
-                    for i, w_ts in enumerate(wrong_ts_idx):
-                        val, idx = find_nearest(ttl_events, software_ts[w_ts], not_in_idx=np.unique(ttl_idxs))
-                        timestamps[w_ts] = val[0]
-                        ttl_idxs[w_ts] = idx[0].astype(int)
-                    wrong_ts_idx = np.where(np.diff(timestamps) == 0)[0]
-                    print('After final correction: ',
-                          len(wrong_ts_idx), ' out of ', len(software_ts))
-
-                # substitute missing positions with nans
-                missed_ttl = np.ones(len(ttl_events), dtype=bool)
-                missed_ttl[ttl_idxs] = False
-                new_pos = np.zeros((pos.shape[0], len(ttl_events)))
-                new_pos[:, ttl_idxs]  = pos
-                new_pos[:, missed_ttl] = np.nan
-
-                positions.append(new_pos)
-                times.append(ttl_events)
-                ttl_id.append(ttl_idxs)
-        else:
-            from joblib import Parallel, delayed
-            import multiprocessing
-
-            if nprocesses is None:
-                num_cores = multiprocessing.cpu_count()
-            else:
-                num_cores = nprocesses
-            # divide duration in num_cores (+ 1s to be sure to include all samples)
-            chunk_times = np.linspace(0,(self.duration+1*pq.s).rescale(pq.s).magnitude, num_cores+1)
-            chunks  = []
-            for i, start in enumerate(chunk_times[:-1]):
-                chunks.append([start, chunk_times[i+1]])
-
-            for t, (pos, software_ts) in enumerate(zip(self.tracking[0].positions, self.tracking[0].times)):
-                chunks_ts, chunks_ttl= [], []
-                for i, start in enumerate(chunk_times[:-1]):
-                    clip_ts = clip_times(software_ts, [start, chunk_times[i + 1]])
-                    clip_ttl = clip_times(ttl_events, [start, chunk_times[i + 1]])
-                    # print('chunk: ', i, ' clip_ts: ', clip_ts[0], clip_ts[-1], ' clip_ttl: ', clip_ttl[0], clip_ttl[-1])
-                    chunks_ts.append(clip_ts)
-                    chunks_ttl.append(clip_ttl)
-
-                results = Parallel(n_jobs=num_cores)(delayed(assign_ttl)(ts, ttl) for (ts, ttl) in zip(chunks_ts,
-                                                                                                       chunks_ttl))
-
-                timestamps, ttl_idxs = [], []
-                for ch, tt in enumerate(results):
-                    timestamps = np.append(timestamps, tt[0])
-                    chunk_start = np.where(ttl_events>=tt[0][0])[0][0]
-                    ttl_idxs = np.append(ttl_idxs, tt[1]+chunk_start).astype(int)
-
-                ttl_id.append(ttl_idxs)
-
-                # Correct wrong samples that might arise at boundaries
-                wrong_ts_idx = np.where(np.diff(ttl_idxs) <= 0)[0]
-                wrong_ts_idx += 1
-                wrong_pos_idxs = []
-                for w_ts in wrong_ts_idx:
-                    w_, w_id = find_nearest(software_ts, ttl_events[w_ts])
-                    wrong_pos_idxs.append(w_id.astype(int))
-
-                # #TODO remove right indeces
-                if len(wrong_ts_idx) != 0:
-                    print('Removing incorrect ', len(wrong_ts_idx), ' out of ', len(software_ts))
-                    ttl_idxs = np.delete(ttl_idxs, wrong_ts_idx)
-                    wrong_ts_idx = np.where(np.diff(ttl_idxs) <= 0)[0]
-                    print('After final correction: ',
-                          len(wrong_ts_idx), ' out of ', len(software_ts))
-
-                ttl_id.append(ttl_idxs)
-
-                # substitute missing positions with nans
-                missed_ttl = np.ones(len(ttl_events), dtype=bool)
-                missed_ttl[ttl_idxs] = False
-                new_pos = np.zeros((pos.shape[0], len(ttl_events)))
-                correct_pos = np.ones(pos.shape[1], dtype=bool)
-                correct_pos[wrong_pos_idxs] = False
-                new_pos[:, ttl_idxs] = pos[:, correct_pos]
-                new_pos[:, missed_ttl] = np.nan
-
-                positions.append(new_pos)
-                times.append(ttl_events)
-
-            self.tracking[0].positions = positions
-            self.tracking[0].times = times

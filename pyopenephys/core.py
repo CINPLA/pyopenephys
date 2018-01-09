@@ -97,6 +97,19 @@ class TrackingData:
             self.times.shape, self.x.shape
         )
 
+class EventData:
+    def __init__(self, times, channels, channel_states, full_words, processor, node_id, metadata=None):
+        self.times = times
+        self.channels = channels
+        self.channel_states = channel_states
+        self.full_words = full_words
+        self.processor = processor
+        self.node_id = node_id
+        self.metadata = metadata
+    
+    def __str__(self):
+        return "<OpenEphys event data>"
+
 
 class SpikeTrain:
     def __init__(self, times, waveforms,
@@ -172,7 +185,7 @@ class File:
         # TODO add default prb map and allow to add it later
         self._absolute_foldername = foldername
         self._path, relative_foldername = os.path.split(foldername)
-        self._experiments_names = [f for f in os.listdir(self._absolute_foldername)
+        self._experiments_names = [f for f in sorted(os.listdir(self._absolute_foldername))
                                    if os.path.isdir(op.join(self._absolute_foldername, f))
                                    and 'experiment' in f]
         self._exp_ids = [int(exp[-1]) for exp in self._experiments_names]
@@ -422,8 +435,8 @@ class Recording:
         self._duration = []
 
         self._analog_signals = []
-        self._digital_signals = []
         self._tracking_signals = []
+        self._event_signals = []
         self._messages_signals = []
 
         self.__dict__.update(self._read_sync_message())
@@ -491,9 +504,9 @@ class Recording:
     @property
     def events(self):
         if self._events_dirty:
-            self._read_digital_signals()
+            self._read_events()
 
-        return self._events
+        return self._event_signals
 
     @property
     def tracking(self):
@@ -596,7 +609,46 @@ class Recording:
         self._channel_ids = np.arange(self._channel_count)
         self._channel_groups_dirty = False
 
+    def _read_events(self):
+        events_folder = [op.join(self.absolute_foldername, f)
+                                for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
+        processor_folders = [op.join(events_folder, f) for f in os.listdir(events_folder)
+                            if 'Tracking_Port' not in f and 'Message_Center' not in f]
+        for processor_folder in processor_folders:
+            TTL_groups = [f for f in os.listdir(processor_folder)]
+            if self._format == 'binary':
+                import struct
+                for bg in TTL_groups:
+                    full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
+                    ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
+                    channels = np.load(op.join(processor_folder, bg, 'channels.npy'))
+                    channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
+                    metadata_file = op.join(processor_folder, bg, 'metadata.npy')
+                    if os.path.exists(metadata_file):
+                        metadata = np.load(metadata_file)
+                    else:
+                        metadata = None
+
+                    ts = ts / self.sample_rate
+
+                    processor_folder_split = op.split(processor_folder)[-1].split("-")
+
+                    event_data = EventData(
+                            times=ts,
+                            channels=channels,
+                            channel_states=channel_states,
+                            full_words=full_words,
+                            processor=processor_folder_split[0],
+                            node_id=processor_folder_split[1], # TODO convert to int
+                            metadata=metadata
+                        )
+
+                    self._event_signals.append(event_data)
+
+        self._events_dirty = False
+
     def _read_tracking(self):
+        # TODO sort experiments by folder name (use natural sort!)
         if 'Sources/Tracking Port' in self.sig_chain.keys():
             # Check and decode files
             events_folder = [op.join(self.absolute_foldername, f)
@@ -613,7 +665,7 @@ class Recording:
                     metadata = np.load(op.join(tracking_folder, bg, 'metadata.npy'))
                     data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
-                    ts = ts / float(self.sample_rate)
+                    ts = ts / self.sample_rate
                     x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
 
                     tracking_data = TrackingData(

@@ -431,9 +431,9 @@ class Recording:
         self._spiketrains_dirty = True
         self._tracking_dirty = True
         self._events_dirty = True
+
         self._times = []
         self._duration = []
-
         self._analog_signals = []
         self._tracking_signals = []
         self._event_signals = []
@@ -444,15 +444,17 @@ class Recording:
 
     @property
     def duration(self):
-        if self.rhythm:
-            self._duration = (self.analog_signals[0].signal.shape[1] /
-                              self.analog_signals[0].sample_rate)
-        elif self.track_port:
-            self._duration = self.tracking[0].times[0][-1] - self.tracking[0].times[0][0]
+        if 'Sources/Rhythm FPGA' in self.sig_chain.keys():
+            if not self._analog_signals_dirty and self.nchan != 0:
+                self._duration = (self.analog_signals[0].signal.shape[1] /
+                                  self.analog_signals[0].sample_rate)
+                return self._duration
+        if 'Sources/Tracking Port' in self.sig_chain.keys():
+            self._duration = self.tracking[0].times[-1] - self.tracking[0].times[0]
+            return self._duration
         else:
             self._duration = 0
-
-        return self._duration
+            return self._duration
 
     @property
     def sample_rate(self):
@@ -460,6 +462,10 @@ class Recording:
             return self._processor_sample_rate
         else:
             return self._software_sample_rate
+
+    @property
+    def software_sample_rate(self):
+        return self._software_sample_rate
 
     def channel_group(self, channel_id):
         if self._channel_groups_dirty:
@@ -517,10 +523,11 @@ class Recording:
 
     @property
     def times(self):
-        if self.rhythmID:
-            self._times = self.analog_signals[0].times
-        elif self.track_port:
-            self._times = self.tracking[0].times[0]
+        if 'Sources/Rhythm FPGA' in self.sig_chain.keys():
+            if not self._analog_signals_dirty and self.nchan != 0:
+                self._times = self.analog_signals[0].times
+        if 'Sources/Tracking Port' in self.sig_chain.keys():
+            self._times = self.tracking[0].times
         else:
             self._times = []
 
@@ -665,7 +672,8 @@ class Recording:
                     metadata = np.load(op.join(tracking_folder, bg, 'metadata.npy'))
                     data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
-                    ts = ts / self.sample_rate
+                    # ts = ts / self.sample_rate
+                    ts = ts / self.software_sample_rate
                     x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
 
                     tracking_data = TrackingData(
@@ -682,7 +690,7 @@ class Recording:
                 self._tracking_dirty = False
 
     def _read_analog_signals(self):
-        if self.processor:
+        if self.processor and self.nchan != 0:
             # Check and decode files
             continuous_folder = [op.join(self.absolute_foldername, f)
                                  for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
@@ -929,3 +937,16 @@ class Recording:
             self._duration = self._times[-1] - self._times[0]
         else:
             print('Empty clipping times list.')
+
+
+    def export_matlab(self, filename):
+        from scipy import io as sio
+
+        dict_to_save = {'duration': self.duration.rescale('s'), 'times': self.times.rescale('s'),
+                        'tracking': np.array([[tr.x, tr.y] for tr in self.tracking]),
+                        'analog': np.array([sig.signal for sig in self.analog_signals]),
+                        'events': np.array([ev.times for ev in self.events])}
+
+        sio.savemat(filename, dict_to_save)
+
+

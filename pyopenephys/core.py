@@ -447,7 +447,7 @@ class Recording:
         if 'Sources/Rhythm FPGA' in self.sig_chain.keys():
             if not self._analog_signals_dirty and self.nchan != 0:
                 self._duration = (self.analog_signals[0].signal.shape[1] /
-                                  self.analog_signals[0].sample_rate)
+                                  self.sample_rate)
                 return self._duration
         if 'Sources/Tracking Port' in self.sig_chain.keys():
             self._duration = self.tracking[0].times[-1] - self.tracking[0].times[0]

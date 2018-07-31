@@ -695,7 +695,7 @@ class Recording:
             continuous_folder = [op.join(self.absolute_foldername, f)
                                  for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
             processor_folder = [op.join(continuous_folder, f) for f in os.listdir(continuous_folder)
-                                if 'File_Reader' in f or 'RhythmFPGA' in f][0]
+                                if 'File_Reader' in f or 'Rhythm_FPGA' in f][0]
 
             filenames = [f for f in os.listdir(processor_folder)]
             if self._format == 'binary':

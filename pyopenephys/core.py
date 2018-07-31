@@ -942,10 +942,14 @@ class Recording:
     def export_matlab(self, filename):
         from scipy import io as sio
 
-        dict_to_save = {'duration': self.duration.rescale('s'), 'times': self.times.rescale('s'),
-                        'tracking': np.array([[tr.x, tr.y] for tr in self.tracking]),
-                        'analog': np.array([sig.signal for sig in self.analog_signals]),
-                        'events': np.array([ev.times for ev in self.events])}
+        dict_to_save = {'duration': self.duration.rescale('s'), 'timestamps': self.times.rescale('s')}
+
+        if len(self.tracking) != 0:
+            dict_to_save.update({'tracking': np.array([[tr.x, tr.y] for tr in self.tracking])})
+        if len(self.analog_signals) != 0:
+            dict_to_save.update({'analog': np.array([sig.signal for sig in self.analog_signals])})
+        if len(self.events) != 0:
+            dict_to_save.update({'events': np.array([ev.times for ev in self.events])})
 
         sio.savemat(filename, dict_to_save)
 

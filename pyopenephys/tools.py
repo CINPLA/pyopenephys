@@ -523,7 +523,7 @@ def find_nearest(array, value, n=1, greater_than=None, not_in_idx=None):
         else:
             print('Array length must be greater than 0')
             return None, []
-        
+
 
 def assign_ttl(soft_ts, ttl):
     ts = np.zeros(len(soft_ts))

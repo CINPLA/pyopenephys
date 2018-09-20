@@ -3,7 +3,7 @@ python:
   - "3.5"
   - "3.6"
 install:
-  - pip install numpy quantities xmljson
+  - pip install numpy quantities xmltodict
   - pip install pytest pyaml coverage codecov
   - python setup.py install
 script:

@@ -11,7 +11,7 @@ import struct
 import platform
 
 
-def _read_python(path):
+def read_python(path):
     from six import exec_
     path = op.realpath(op.expanduser(path))
     assert op.exists(path)
@@ -129,11 +129,16 @@ def get_number_of_records(filepath):
 def clip_anas(analog_signals, times, clipping_times, start_end):
     '''
 
-    :param analog_signals:
-    :param times:
-    :param clipping_times:
-    :param start_end:
-    :return:
+    Parameters
+    ----------
+    analog_signals
+    times
+    clipping_times
+    start_end
+
+    Returns
+    -------
+
     '''
 
     if len(analog_signals.signal) != 0:
@@ -161,11 +166,17 @@ def clip_anas(analog_signals, times, clipping_times, start_end):
 def clip_digs(digital_signals, clipping_times, start_end):
     '''
 
-    :param digital_signals:
-    :param clipping_times:
-    :param start_end:
-    :return:
+    Parameters
+    ----------
+    digital_signals
+    clipping_times
+    start_end
+
+    Returns
+    -------
+
     '''
+
 
     digs_clip = []
     for i, dig in enumerate(digital_signals.times):
@@ -187,10 +198,15 @@ def clip_digs(digital_signals, clipping_times, start_end):
 def clip_tracking(tracking, clipping_times, start_end):
     '''
 
-    :param tracking:
-    :param clipping_times:
-    :param start_end:
-    :return:
+    Parameters
+    ----------
+    tracking
+    clipping_times
+    start_end
+
+    Returns
+    -------
+
     '''
     assert len(tracking.positions) == len(tracking.times)
 
@@ -222,10 +238,15 @@ def clip_tracking(tracking, clipping_times, start_end):
 def clip_times(times, clipping_times, start_end='start'):
     '''
 
-    :param times:
-    :param clipping_times:
-    :param start_end:
-    :return:
+    Parameters
+    ----------
+    times
+    clipping_times
+    start_end
+
+    Returns
+    -------
+
     '''
     times.rescale(pq.s)
 
@@ -466,6 +487,7 @@ def read_analog_continuous_signal(filepath, dtype=float, verbose=False,
 
     return res
 
+
 def find_nearest(array, value, n=1, greater_than=None, not_in_idx=None):
 
     if not_in_idx is None:
@@ -501,6 +523,7 @@ def find_nearest(array, value, n=1, greater_than=None, not_in_idx=None):
         else:
             print('Array length must be greater than 0')
             return None, []
+        
 
 def assign_ttl(soft_ts, ttl):
     ts = np.zeros(len(soft_ts))

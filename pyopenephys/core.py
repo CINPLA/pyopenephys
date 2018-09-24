@@ -87,7 +87,7 @@ class TrackingData:
         self.height = height
         self.channels = channels
         self.metadata = metadata
-        
+
     def __str__(self):
         return "<OpenEphys tracking data: times shape: {}, positions shape: {}>".format(
             self.times.shape, self.x.shape
@@ -102,7 +102,7 @@ class EventData:
         self.processor = processor
         self.node_id = node_id
         self.metadata = metadata
-    
+
     def __str__(self):
         return "<OpenEphys event data>"
 
@@ -189,6 +189,7 @@ class File:
     def __init__(self, foldername, probefile=None):
         # TODO assert probefile is a probefile
         # TODO add default prb map and allow to add it later
+        self.probefile = probefile
         self._absolute_foldername = foldername
         self._path, self.relative_foldername = os.path.split(foldername)
         experiments_names = [f for f in sorted(os.listdir(self._absolute_foldername))
@@ -197,12 +198,9 @@ class File:
         exp_ids = [int(exp[-1]) for exp in experiments_names]
         self._experiments = []
 
-        self.global_settings = {'file': {'absolute_foldername': self._absolute_foldername,
-                                         'abolute_path': self._path}}
-
         for (rel_path, id) in zip(experiments_names, exp_ids):
             self._experiments.append(Experiment(op.join(self._absolute_foldername, rel_path),
-                                                id, self.global_settings, probefile))
+                                                id, self))
 
     @property
     def absolute_foldername(self):
@@ -218,35 +216,26 @@ class File:
 
 
 class Experiment:
-    def __init__(self, path, id, gsettings, probefile=None):
-        self.prb_file = probefile
-        self.global_settings = gsettings
+    def __init__(self, path, id, file):
+        self.file = file
+        self.probefile = file.probefile
         self.id = id
         self.sig_chain = dict()
         self._absolute_foldername = path
         self._path = op.dirname(path)
         self._recordings = []
-        
+
         self._ephys = False
         self._read_settings(id)
 
-        self.global_settings.update({'experiment': {'absolute_foldername': self._absolute_foldername,
-                                                    'abolute_path': self.path,
-                                                    'datetime': self.datetime,
-                                                    'format': self.format,
-                                                    'nchan': self.nchan,
-                                                    'keep_channels': self._keep_channels,
-                                                    'sig_chain': self.sig_chain,
-                                                    'channel_mapping': self.probefile_ch_mapping}})
-        
         recording_names = [f for f in os.listdir(self._absolute_foldername)
                                    if os.path.isdir(op.join(self._absolute_foldername, f))
                                    and 'recording' in f]
-        
+
         rec_ids = [int(rec[-1]) for rec in recording_names]
         for (rel_path, id) in zip(recording_names, rec_ids):
             self._recordings.append(Recording(op.join(self._absolute_foldername, rel_path), id,
-                                              self.global_settings, self.prb_file))
+                                              self))
 
     @property
     def absolute_foldername(self):
@@ -255,7 +244,7 @@ class Experiment:
     @property
     def path(self):
         return self._path
-    
+
     @property
     def datetime(self):
         return self._start_datetime
@@ -334,9 +323,9 @@ class Experiment:
             recorded_channels = sorted([int(chan) for chan in
                                         self._channel_info['gain'].keys()])
             self._channel_info['channels'] = recorded_channels
-            if self.prb_file is not None:
+            if self.probefile is not None:
                 self._keep_channels = []
-                self.probefile_ch_mapping = read_python(self.prb_file)['channel_groups']
+                self.probefile_ch_mapping = read_python(self.probefile)['channel_groups']
                 for group_idx, group in self.probefile_ch_mapping.items():
                     group['gain'] = []
                     # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection
@@ -347,7 +336,7 @@ class Experiment:
                             raise ValueError('Channel "' + str(oe_chan) +
                                              '" in channel group "' +
                                              str(group_idx) + '" in probefile' +
-                                             self.prb_file +
+                                             self.probefile +
                                              ' is not marked as recorded ' +
                                              'in settings file' +
                                              self._set_fname)
@@ -363,17 +352,16 @@ class Experiment:
             self.probefile_ch_mapping = None
             self._keep_channels = None
 
-
 class Recording:
-    def __init__(self, path, id, gsettings, probefile=None):
+    def __init__(self, path, id, experiment):
+        self.experiment = experiment
         self.absolute_foldername = path
-        self.prb_file = probefile
-        self.global_settings = gsettings
-        self.sig_chain = gsettings['experiment']['sig_chain']
-        self.format = gsettings['experiment']['format']
-        self._keep_channels = gsettings['experiment']['keep_channels']
-        self.nchan = gsettings['experiment']['nchan']
-        self.probefile_ch_mapping = gsettings['experiment']['channel_mapping']
+        self.probefile = experiment.probefile
+        self.sig_chain = experiment.sig_chain
+        self.format = experiment.format
+        self._keep_channels = experiment._keep_channels
+        self.nchan = experiment.nchan
+        self.probefile_ch_mapping = experiment.probefile_ch_mapping
         self.id = id
 
         self._analog_signals_dirty = True

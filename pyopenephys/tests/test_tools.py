@@ -42,3 +42,6 @@ def test_cut_to_same_len():
     assert np.array_equal(t_, t[:-1])
     assert np.array_equal(x_, x)
     assert np.array_equal(y_, y[:-2])
+
+def test_clip_anas():
+    pass

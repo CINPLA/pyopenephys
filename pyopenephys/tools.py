@@ -6,9 +6,6 @@ import quantities as pq
 import os
 import os.path as op
 import numpy as np
-import locale
-import struct
-import platform
 
 
 def read_python(path):

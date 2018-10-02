@@ -7,19 +7,13 @@ Depends on: sys
             numpy
             quantities
             xmljson
+            xmltodict
 
 Authors: Alessio Buccino @CINPLA,
          Svenn-Arne Dragly @CINPLA,
          Milad H. Mobarhan @CINPLA,
          Mikkel E. Lepperod @CINPLA
 """
-
-# TODO: add extensive function descrption and verbose option for prints
-
-from __future__ import division
-from __future__ import print_function
-from __future__ import with_statement
-
 import quantities as pq
 import os
 import os.path as op
@@ -31,8 +25,6 @@ import platform
 import xmltodict
 from pyopenephys.tools import *
 
-# TODO ChannelGroup class - needs probe file
-# TODO Channel class
 
 class Channel:
     def __init__(self, index, name, gain, channel_id):
@@ -52,30 +44,6 @@ class AnalogSignal:
         return "<OpenEphys analog signal:shape: {}, sample_rate: {}>".format(
             self.signal.shape, self.sample_rate
         )
-
-
-# class DigitalSignal:
-#     def __init__(self, times, channel_id, sample_rate):
-#         self.times = times
-#         self.channel_id = channel_id
-#         self.sample_rate = sample_rate
-#
-#     def __str__(self):
-#         return "<OpenEphys digital signal: nchannels: {}>".format(
-#             self.channel_id
-#         )
-#
-
-# class Sync:
-#     def __init__(self, times, channel_id, sample_rate):
-#         self.times = times
-#         self.channel_id = channel_id
-#         self.sample_rate = sample_rate
-#
-#     def __str__(self):
-#         return "<OpenEphys sync signal: nchannels: {}>".format(
-#             self.channel_id
-#         )
 
 
 class TrackingData:
@@ -224,6 +192,7 @@ class Experiment:
         self._absolute_foldername = path
         self._path = op.dirname(path)
         self._recordings = []
+        self.acquisition_system = None
 
         self._ephys = False
         self._read_settings(id)
@@ -294,10 +263,10 @@ class Experiment:
                 processor_iter = [sigchain['PROCESSOR']]
             for processor in processor_iter:
                 self.sig_chain.update({processor['@name']: True})
-                if 'CHANNEL_INFO' in processor.keys():
+                if 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1':
                     # recorder
                     self._ephys = True
-                    self.acquisition_system = processor['@name']
+                    self.acquisition_system = processor['@name'].split('/')[-1]
                     self._channel_info['gain'] = {}
 
                     # gain for all channels
@@ -309,6 +278,17 @@ class Experiment:
                             self.nchan += 1
                             chnum = chan['@number']
                             self._channel_info['gain'][chnum] = gain[chnum]
+                elif 'CHANNEL' in processor.keys() and processor['@isSource'] == '1':
+                    # recorder
+                    self._ephys = True
+                    self.acquisition_system = processor['@name'].split('/')[-1]
+                    self._channel_info['gain'] = {}
+
+                    for chan in processor['CHANNEL']:
+                        if chan['SELECTIONSTATE']['@record'] == '1':
+                            self.nchan += 1
+                            chnum = chan['@number']
+                            self._channel_info['gain'][chnum] = 1
 
         # Check openephys format
         if self.settings['CONTROLPANEL']['@recordEngine'] == 'OPENEPHYS':
@@ -384,7 +364,7 @@ class Recording:
 
     @property
     def times(self):
-        if 'Sources/Rhythm FPGA' in self.sig_chain.keys():
+        if self.experiment.acquisition_system is not None:
             if not self._analog_signals_dirty and self.nchan != 0:
                 self._times = self.analog_signals[0].times
         if 'Sources/Tracking Port' in self.sig_chain.keys():
@@ -396,7 +376,7 @@ class Recording:
 
     @property
     def duration(self):
-        if 'Sources/Rhythm FPGA' in self.sig_chain.keys():
+        if self.experiment.acquisition_system is not None:
             if not self._analog_signals_dirty and self.nchan != 0:
                 self._duration = (self.analog_signals[0].signal.shape[1] /
                                   self.sample_rate)

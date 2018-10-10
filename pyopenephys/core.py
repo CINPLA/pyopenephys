@@ -85,40 +85,37 @@ class MessageData:
     def __str__(self):
         return "<OpenEphys message data>"
 
-
 class SpikeTrain:
     def __init__(self, times, waveforms,
-                 spike_count, channel_count, samples_per_spike,
-                 sample_rate, t_stop, **attrs):
-        assert(waveforms.shape[0] == spike_count), waveforms.shape[0]
-        assert(waveforms.shape[1] == channel_count), waveforms.shape[1]
-        assert(waveforms.shape[2] == samples_per_spike), waveforms.shape[2]
-        assert(len(times) == spike_count)
-        assert times[-1] <= t_stop, ('Spike time {}'.format(times[-1]) +
-                                     ' exceeds duration {}'.format(t_stop))
+                 electrode_indices, clusters, metadata):
+        assert len(waveforms.shape) == 3
         self.times = times
         self.waveforms = waveforms
-        self.attrs = attrs
-        self.t_stop = t_stop
-
-        self.spike_count = spike_count
-        self.channel_count = channel_count
-        self.samples_per_spike = samples_per_spike
-        self.sample_rate = sample_rate
+        self.electrode_indices = electrode_indices
+        self.clusters = clusters
+        self.metadata = metadata
 
     @property
     def num_spikes(self):
         """
         Alias for spike_count.
         """
-        return self.spike_count
+        return self.waveforms.shape[0]
 
     @property
     def num_chans(self):
         """
         Alias for channel_count.
         """
-        return self.channel_count
+        return self.waveforms.shape[1]
+
+    @property
+    def num_frames(self):
+        """
+        Alias for channel_count.
+        """
+        return self.waveforms.shape[2]
+
 
 #todo fix channels where they belong!
 class ChannelGroup:
@@ -210,7 +207,7 @@ class Experiment:
         self.file = file
         self.probefile = file.probefile
         self.id = id
-        self.sig_chain = []
+        self.sig_chain = dict()
         self._absolute_foldername = path
         self._recordings = []
         self.acquisition_system = None
@@ -220,16 +217,19 @@ class Experiment:
             self._read_settings(id)
 
             # retrieve number of recordings
-            if self.id == 1:
-                contFile = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
-                             and len(f.split('_')) == 2][0]
+            if self.acquisition_system is not None:
+                if self.id == 1:
+                    contFile = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
+                                 and len(f.split('_')) == 2][0]
+                else:
+                    contFile = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
+                                 and '_' + str(self.id) in f][0]
+                data = load(op.join(self._absolute_foldername, contFile))
+                rec_ids = np.unique(data['recordingNumber'])
+                for rec_id in rec_ids:
+                    self._recordings.append(Recording(self._absolute_foldername, int(rec_id), self))
             else:
-                contFile = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
-                             and '_' + str(self.id) in f][0]
-            data = load(op.join(self._absolute_foldername, contFile))
-            rec_ids = np.unique(data['recordingNumber'])
-            for rec_id in rec_ids:
-                self._recordings.append(Recording(self._absolute_foldername, int(rec_id), self))
+                self._recordings.append(Recording(self._absolute_foldername, int(self.id), self))
 
         elif self.file.format == 'binary':
             self._path = op.dirname(path)
@@ -299,7 +299,7 @@ class Experiment:
             else:
                 processor_iter = [sigchain['PROCESSOR']]
             for processor in processor_iter:
-                self.sig_chain.append(processor['@name'])
+                self.sig_chain.update({processor['@name']: processor['@NodeId']})
                 if 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1':
                     # recorder
                     self.acquisition_system = processor['@name'].split('/')[-1]
@@ -395,6 +395,7 @@ class Recording:
         self._tracking_signals = []
         self._event_signals = []
         self._messages = []
+        self._spiketrains = []
 
         self.__dict__.update(self._read_sync_message())
 
@@ -404,7 +405,7 @@ class Recording:
         if self.experiment.acquisition_system is not None:
             if not self._analog_signals_dirty and self.nchan != 0:
                 self._times = self.analog_signals[0].times
-        if 'Sources/Tracking Port' in self.sig_chain:
+        if 'Sources/Tracking Port' in self.sig_chain.keys():
             self._times = self.tracking[0].times
         else:
             self._times = []
@@ -418,7 +419,7 @@ class Recording:
                 self._duration = (self.analog_signals[0].signal.shape[1] /
                                   self.sample_rate)
                 return self._duration
-        if 'Sources/Tracking Port' in self.sig_chain:
+        if 'Sources/Tracking Port' in self.sig_chain.keys():
             self._duration = self.tracking[0].times[-1] - self.tracking[0].times[0]
             return self._duration
         else:
@@ -487,56 +488,67 @@ class Recording:
 
     def _read_sync_message(self):
         info = dict()
+        stimes = []
+
         if self.format == 'binary':
-            stimes = []
             sync_messagefile = [f for f in os.listdir(self.absolute_foldername) if 'sync_messages' in f][0]
-            with open(op.join(self.absolute_foldername, sync_messagefile), "r") as fh:
-                while True:
-                    spl = fh.readline().split()
-                    if not spl:
-                        break
-                    if 'Software' in spl:
-                        self.processor = False
-                        stime = spl[-1].split('@')
-                        hz_start = stime[-1].find('Hz')
-                        sr = float(stime[-1][:hz_start]) * pq.Hz
-                        info['_software_sample_rate'] = sr
-                        info['_software_start_time'] = int(stime[0])
-                    elif 'Processor:' in spl:
-                        self.processor = True
-                        stime = spl[-1].split('@')
-                        hz_start = stime[-1].find('Hz')
-                        stimes.append(float(stime[-1][:hz_start]))
-                        sr = float(stime[-1][:hz_start]) * pq.Hz
-                        info['_processor_sample_rate'] = sr
-                        info['_processor_start_time'] = int(stime[0])
-                    else:
-                        message = {'time': int(spl[0]),
-                                   'message': ' '.join(spl[1:])}
-                        info['messages'].append(message)
-            if any(np.diff(np.array(stimes, dtype=int))):
-                raise ValueError('Found different processor start times')
+        elif self.format == 'openephys':
+            if self.experiment.id == 1:
+                sync_messagefile = 'messages.events'
+            else:
+                sync_messagefile = 'messages_' + str(self.experiment.id) + '.events'
+
+        with open(op.join(self.absolute_foldername, sync_messagefile), "r") as fh:
+            while True:
+                spl = fh.readline().split()
+                if not spl:
+                    break
+                if 'Software' in spl:
+                    self.processor = False
+                    stime = spl[-1].split('@')
+                    hz_start = stime[-1].find('Hz')
+                    sr = float(stime[-1][:hz_start]) * pq.Hz
+                    info['_software_sample_rate'] = sr
+                    info['_software_start_time'] = int(stime[0])
+                elif 'Processor:' in spl:
+                    self.processor = True
+                    stime = spl[-1].split('@')
+                    hz_start = stime[-1].find('Hz')
+                    stimes.append(float(stime[-1][:hz_start]))
+                    sr = float(stime[-1][:hz_start]) * pq.Hz
+                    info['_processor_sample_rate'] = sr
+                    info['_processor_start_time'] = int(stime[0])
+                else:
+                    message = {'time': int(spl[0]),
+                               'message': ' '.join(spl[1:])}
+                    info['messages'].append(message)
+        if any(np.diff(np.array(stimes, dtype=int))):
+            raise ValueError('Found different processor start times')
+
         return info
 
 
     def _read_messages(self):
-        events_folder = [op.join(self.absolute_foldername, f)
-                         for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
-        message_folder = [op.join(events_folder, f) for f in os.listdir(events_folder)
-                           if 'Message_Center' in f][0]
-        text_groups = [f for f in os.listdir(message_folder)]
         if self.format == 'binary':
-            for tg in text_groups:
-                text = np.load(op.join(message_folder, tg, 'text.npy'))
-                ts = np.load(op.join(message_folder, tg, 'timestamps.npy'))
-                channels = np.load(op.join(message_folder, tg, 'channels.npy'))
+            events_folder = [op.join(self.absolute_foldername, f)
+                             for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
+            message_folder = [op.join(events_folder, f) for f in os.listdir(events_folder)
+                               if 'Message_Center' in f][0]
+            text_groups = [f for f in os.listdir(message_folder)]
+            if self.format == 'binary':
+                for tg in text_groups:
+                    text = np.load(op.join(message_folder, tg, 'text.npy'))
+                    ts = np.load(op.join(message_folder, tg, 'timestamps.npy'))
+                    channels = np.load(op.join(message_folder, tg, 'channels.npy'))
 
-                message_data = MessageData(
-                    times=ts,
-                    channels=channels,
-                    text=text,
-                )
-                self._messages.append(message_data)
+                    message_data = MessageData(
+                        times=ts,
+                        channels=channels,
+                        text=text,
+                    )
+                    self._messages.append(message_data)
+        elif self.format == 'openephys':
+            pass
 
         self._message_dirty = False
 
@@ -590,7 +602,6 @@ class Recording:
             for processor_folder in processor_folders:
                 TTL_groups = [f for f in os.listdir(processor_folder)]
                 if self.format == 'binary':
-                    import struct
                     for bg in TTL_groups:
                         full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
                         ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
@@ -612,7 +623,7 @@ class Recording:
                                 channel_states=channel_states,
                                 full_words=full_words,
                                 processor=processor_folder_split[0],
-                                node_id=processor_folder_split[1], # TODO convert to int
+                                node_id=int(processor_folder_split[1]), # TODO convert to int
                                 metadata=metadata
                             )
 
@@ -622,17 +633,15 @@ class Recording:
                 ev_file = op.join(self.absolute_foldername, 'all_channels.events')
             else:
                 ev_file = op.join(self.absolute_foldername, 'all_channels_' + str(int(self.experiment.id)) + '.events')
-
             data = loadEvents(ev_file)
-            raise Exception()
+            node_ids = np.unique(data['nodeId']).astype(int)
+            raise NotImplementedError('TODO')
 
         self._events_dirty = False
 
 
     def _read_tracking(self):
-        # TODO sort experiments by folder name (use natural sort!)
-        if 'Sources/Tracking Port' in self.sig_chain:
-
+        if 'Sources/Tracking Port' in self.sig_chain.keys():
             if self.format == 'binary':
                 # Check and decode files
                 events_folder = [op.join(self.absolute_foldername, f)
@@ -661,8 +670,12 @@ class Recording:
                             height=h
                         )
 
-                    self._tracking_signals.append(tracking_data)
-                self._tracking_dirty = False
+                self._tracking_signals.append(tracking_data)
+            elif self.format == 'openephys':
+                print("Unfortunately, tracking is not saved in 'openephys' format. Use 'binary' instead!")
+        else:
+            print("Tracking is not found!")
+            self._tracking_dirty = False
 
 
     def _read_analog_signals(self):
@@ -694,6 +707,7 @@ class Recording:
                     contFiles = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
                                  and '_' + str(self.experiment.id) in f]
 
+                # order channels
                 idxs = [int(x[x.find('CH') + 2: x.find('.')]) for x in contFiles]
                 contFiles = list(np.array(contFiles)[np.argsort(idxs)])
 
@@ -752,43 +766,111 @@ class Recording:
 
 
     def _read_spiketrains(self):
-        # if self.rhythm:
-            # TODO check if spiketains are recorded from setings
-        filenames = [f for f in os.listdir(self._absolute_foldername)
-                     if f.endswith('.spikes')]
-        if len(filenames) != 0:
-            self._spiketrains = []
-            if len(filenames) == 0:
-                return
-            for fname in filenames:
-                print('Loading spikes from ', fname.split('.')[0])
-                data = loadSpikes(op.join(self._absolute_foldername, fname))
-                clusters = data['recordingNumber']
-                group_id = int(np.unique(data['source']))
-                assert 'TT{}'.format(group_id) in fname
-                for cluster in np.unique(clusters):
-                    wf = data['spikes'][clusters == cluster]
-                    wf = wf.swapaxes(1, 2)
-                    sample_rate = int(data['header']['sampleRate'])
-                    times = data['timestamps'][clusters == cluster]
-                    times = (times - self.start_timestamp) / sample_rate
-                    t_stop = self.duration.rescale('s')
-                    self._spiketrains.append(
-                        SpikeTrain(
-                            times=times * pq.s,
-                            waveforms=wf * pq.uV,
-                            spike_count=len(times),
-                            channel_count=int(data['header']['num_channels']),
-                            sample_rate=sample_rate * pq.Hz,
-                            channel_group_id=group_id,
-                            samples_per_spike=40,  # TODO read this from file
-                            gain=data['gain'][clusters == cluster],
-                            threshold=data['thresh'][clusters == cluster],
-                            name='Unit #{}'.format(cluster),
-                            cluster_id=int(cluster),
-                            t_stop=t_stop
-                        )
-                    )
+        if self.format == 'binary':
+            # Check and decode files
+            spikes_folder = [op.join(self.absolute_foldername, f)
+                             for f in os.listdir(self.absolute_foldername) if 'spikes' in f][0]
+            processor_folders = [op.join(spikes_folder, f) for f in os.listdir(spikes_folder)]
+
+            for processor_folder in processor_folders:
+                spike_groups = [f for f in os.listdir(processor_folder)]
+                for bg in spike_groups:
+                    spike_clusters = np.load(op.join(processor_folder, bg, 'spike_clusters.npy'))
+                    spike_electrode_indices = np.load(op.join(processor_folder, bg, 'spike_electrode_indices.npy'))
+                    spike_times = np.load(op.join(processor_folder, bg, 'spike_times.npy'))
+                    spike_waveforms = np.load(op.join(processor_folder, bg, 'spike_waveforms.npy'))
+
+                    metadata_file = op.join(processor_folder, bg, 'metadata.npy')
+                    if os.path.exists(metadata_file):
+                        metadata = np.load(metadata_file)
+                    else:
+                        metadata = None
+
+                    spike_times = spike_times / self.sample_rate
+                    processor_folder_split = op.split(processor_folder)[-1].split("-")
+
+                    clusters = np.unique(spike_clusters)
+                    print('Clusters: ', len(clusters))
+
+                    if len(clusters) > 1:
+                        for clust in clusters:
+                            idx = np.where(spike_clusters==clust)[0]
+                            spiketrain = SpikeTrain(times=spike_times[idx],
+                                                    waveforms=spike_waveforms[idx],
+                                                    electrode_indices=spike_electrode_indices[idx],
+                                                    clusters=spike_clusters[idx],
+                                                    metadata=metadata)
+                            self._spiketrains.append(spiketrain)
+                    else:
+                        # split by electrode
+                        elecs = np.unique(spike_electrode_indices)
+                        for el in elecs:
+                            idx = np.where(spike_electrode_indices==el)[0]
+                            spiketrain = SpikeTrain(times=spike_times[idx],
+                                                    waveforms=spike_waveforms[idx],
+                                                    electrode_indices=spike_electrode_indices[idx],
+                                                    clusters=spike_clusters[idx],
+                                                    metadata=metadata)
+                            self._spiketrains.append(spiketrain)
+
+        elif self.format == 'openephys':
+            filenames = [f for f in os.listdir(self.absolute_foldername)
+                         if f.endswith('.spikes')]
+            # order channels
+            idxs = [int(x.split('.')[1][x.split('.')[1].find('0n')+2:]) for x in filenames]
+            filenames = list(np.array(filenames)[np.argsort(idxs)])
+
+            if len(filenames) != 0:
+                self._spiketrains = []
+                spike_clusters = np.array([])
+                spike_times = np.array([])
+                spike_electrode_indices = np.array([])
+                spike_waveforms = np.array([])
+                if len(filenames) == 0:
+                    return
+                for i_f, fname in enumerate(filenames):
+                    print('Loading spikes from ', fname)
+                    data = load(op.join(self.absolute_foldername, fname))
+
+                    if i_f == 0:
+                        spike_clusters = np.max(data['sortedId'], axis=1).astype(int)
+                        spike_times = data['timestamps']
+                        spike_electrode_indices = np.array([int(fname[fname.find('0n')+2]) + 1]
+                                                                       * len(spike_clusters))
+                        spike_waveforms = data['spikes'].swapaxes(1, 2)
+                    else:
+                        spike_clusters = np.hstack((spike_clusters, np.max(data['sortedId'], axis=1).astype(int)))
+                        spike_times = np.hstack((spike_times, data['timestamps']))
+                        spike_electrode_indices = np.hstack((spike_electrode_indices,
+                                                                  np.array([int(fname[fname.find('0n')+2]) + 1]
+                                                                           * len(data['sortedId']))))
+                        spike_waveforms = np.vstack((spike_waveforms, data['spikes'].swapaxes(1, 2)))
+
+                clusters = np.unique(spike_clusters)
+                print('Clusters: ', len(clusters))
+                spike_times = spike_times / self.sample_rate
+
+                if len(clusters) > 1:
+                    for clust in clusters:
+                        idx = np.where(spike_clusters == clust)[0]
+                        spiketrain = SpikeTrain(times=spike_times[idx],
+                                                waveforms=spike_waveforms[idx],
+                                                electrode_indices=spike_electrode_indices[idx],
+                                                clusters=spike_clusters[idx],
+                                                metadata=None)
+                        self._spiketrains.append(spiketrain)
+                else:
+                    # split by electrode
+                    elecs = np.unique(spike_electrode_indices)
+                    for el in elecs:
+                        idx = np.where(spike_electrode_indices == el)[0]
+                        spiketrain = SpikeTrain(times=spike_times[idx],
+                                                waveforms=spike_waveforms[idx],
+                                                electrode_indices=spike_electrode_indices[idx],
+                                                clusters=spike_clusters[idx],
+                                                metadata=None)
+                        self._spiketrains.append(spiketrain)
+
         self._spiketrains_dirty = False
 
     def clip_recording(self, clipping_times, start_end='start'):

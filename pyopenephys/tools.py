@@ -58,36 +58,8 @@ def clip_anas(analog_signals, times, clipping_times, start_end):
         return []
 
 
-def clip_digs(digital_signals, clipping_times, start_end):
-    '''
-
-    Parameters
-    ----------
-    digital_signals
-    clipping_times
-    start_end
-
-    Returns
-    -------
-
-    '''
-
-
-    digs_clip = []
-    for i, dig in enumerate(digital_signals.times):
-        dig.rescale(pq.s)
-        if len(clipping_times) == 2:
-            idx = np.where((dig > clipping_times[0]) & (dig < clipping_times[1]))
-        elif len(clipping_times) == 1:
-            if start_end == 'start':
-                idx = np.where(dig > clipping_times[0])
-            elif start_end == 'end':
-                idx = np.where(dig < clipping_times[0])
-        else:
-            raise AttributeError('clipping_times must be of length 1 or 2')
-        digs_clip.append(dig[idx])
-
-    return np.array(digs_clip) * pq.s
+def clip_events(digital_signals, clipping_times, start_end):
+    pass
 
 
 def clip_tracking(tracking, clipping_times, start_end):
@@ -128,6 +100,10 @@ def clip_tracking(tracking, clipping_times, start_end):
         t_clip.append(times)
 
     return track_clip, t_clip
+
+
+def clip_spiketrains(tracking, clipping_times, start_end):
+    pass
 
 
 def clip_times(times, clipping_times, start_end='start'):

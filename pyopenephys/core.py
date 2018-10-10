@@ -693,34 +693,42 @@ class Recording:
                 else:
                     contFiles = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
                                  and '_' + str(self.experiment.id) in f]
-                contFiles = sorted(contFiles)
+
+                idxs = [int(x[x.find('CH') + 2: x.find('.')]) for x in contFiles]
+                contFiles = list(np.array(contFiles)[np.argsort(idxs)])
+
                 if len(contFiles) != 0:
                     print('Reading all channels')
                     anas = np.array([])
-                    for f in contFiles:
+                    for i_f, f in enumerate(contFiles):
                         print(f)
                         fullpath = op.join(self.absolute_foldername, f)
                         sig = loadContinuous(fullpath)
                         block_len = int(sig['header']['blockLength'])
                         sample_rate = float(sig['header']['sampleRate'])
-
-                        times = np.array([])
-                        rec_num = np.array([])
-                        for (t, r) in zip(sig['timestamps'], sig['recordingNumber']):
-                            t = int(t)
-                            times = np.concatenate((times, np.arange(t, t + block_len) / sample_rate))
-                            rec_num = np.concatenate((rec_num, [int(r)] * block_len))
-
-                        idx_rec = np.where(rec_num == self.id)[0]
-                        if len(idx_rec) > 0:
-                            if anas.shape[0] < 1:
-                                anas = sig['data'][None, idx_rec]
+                        if anas.shape[0] < 1:
+                            anas = sig['data'][None, :]
+                        else:
+                            if sig['data'].size == anas[-1].size:
+                                anas = np.append(anas, sig['data'][None, :], axis=0)
                             else:
-                                if sig['data'][idx_rec].size == anas[-1].size:
-                                    anas = np.append(anas, sig['data'][None, idx_rec], axis=0)
-                                else:
-                                    raise Exception('Channels must have the same number of samples')
-                            ts = times[idx_rec]
+                                raise Exception('Channels must have the same number of samples')
+
+                        if i_f == len(contFiles) - 1:
+                            # Recordings number
+                            rec_num = sig['recordingNumber']
+                            timestamps = sig['timestamps']
+                            idx_rec = np.where(rec_num == self.id)[0]
+                            if len(idx_rec) > 0:
+                                idx_start = idx_rec[0]
+                                idx_end = idx_rec[-1]
+                                t_start = timestamps[idx_start]
+                                t_end = timestamps[idx_end] + block_len
+                                anas_start = idx_start*block_len
+                                anas_end = (idx_end + 1)*block_len
+                                ts = np.arange(t_start, t_end) / sample_rate
+                                anas = anas[:, anas_start:anas_end]
+                    self._processor_sample_rate = sample_rate
                     nsamples = anas.shape[1]
             # Keep only selected channels
             if self._keep_channels is not None:
@@ -731,7 +739,7 @@ class Recording:
             self._analog_signals = [AnalogSignal(
                 channel_id=range(anas_keep.shape[0]),
                 signal=anas_keep,
-                times=ts
+                times=ts,
             )]
         else:
             self._analog_signals = [AnalogSignal(

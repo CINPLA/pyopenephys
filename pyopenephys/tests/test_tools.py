@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from pyopenephys.tools import _start_from_zero_time, _zeros_to_nan, _cut_to_same_len
+from pyopenephys.tools import *
 
 def test_read_python():
     pass

@@ -210,6 +210,7 @@ class Experiment:
         self.sig_chain = dict()
         self._absolute_foldername = path
         self._recordings = []
+        self.settings = None
         self.acquisition_system = None
 
         if self.file.format == 'openephys':
@@ -219,10 +220,10 @@ class Experiment:
             # retrieve number of recordings
             if self.acquisition_system is not None:
                 if self.id == 1:
-                    contFile = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
+                    contFile = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f
                                  and len(f.split('_')) == 2][0]
                 else:
-                    contFile = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
+                    contFile = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f
                                  and '_' + str(self.id) in f][0]
                 data = load(op.join(self._absolute_foldername, contFile))
                 rec_ids = np.unique(data['recordingNumber'])
@@ -416,8 +417,7 @@ class Recording:
     def duration(self):
         if self.experiment.acquisition_system is not None:
             if not self._analog_signals_dirty and self.nchan != 0:
-                self._duration = (self.analog_signals[0].signal.shape[1] /
-                                  self.sample_rate)
+                self._duration = (self.analog_signals[0].times[-1] - self.analog_signals[0].times[0])
                 return self._duration
         if 'Sources/Tracking Port' in self.sig_chain.keys():
             self._duration = self.tracking[0].times[-1] - self.tracking[0].times[0]
@@ -623,7 +623,7 @@ class Recording:
                                 channel_states=channel_states,
                                 full_words=full_words,
                                 processor=processor_folder_split[0],
-                                node_id=int(processor_folder_split[1]), # TODO convert to int
+                                node_id=int(float(processor_folder_split[1])),
                                 metadata=metadata
                             )
 
@@ -792,26 +792,26 @@ class Recording:
                     clusters = np.unique(spike_clusters)
                     print('Clusters: ', len(clusters))
 
-                    if len(clusters) > 1:
-                        for clust in clusters:
-                            idx = np.where(spike_clusters==clust)[0]
-                            spiketrain = SpikeTrain(times=spike_times[idx],
-                                                    waveforms=spike_waveforms[idx],
-                                                    electrode_indices=spike_electrode_indices[idx],
-                                                    clusters=spike_clusters[idx],
-                                                    metadata=metadata)
-                            self._spiketrains.append(spiketrain)
-                    else:
-                        # split by electrode
-                        elecs = np.unique(spike_electrode_indices)
-                        for el in elecs:
-                            idx = np.where(spike_electrode_indices==el)[0]
-                            spiketrain = SpikeTrain(times=spike_times[idx],
-                                                    waveforms=spike_waveforms[idx],
-                                                    electrode_indices=spike_electrode_indices[idx],
-                                                    clusters=spike_clusters[idx],
-                                                    metadata=metadata)
-                            self._spiketrains.append(spiketrain)
+                    # if len(clusters) > 1:
+                    for clust in clusters:
+                        idx = np.where(spike_clusters==clust)[0]
+                        spiketrain = SpikeTrain(times=spike_times[idx],
+                                                waveforms=spike_waveforms[idx],
+                                                electrode_indices=spike_electrode_indices[idx],
+                                                clusters=spike_clusters[idx],
+                                                metadata=metadata)
+                        self._spiketrains.append(spiketrain)
+                    # else:
+                    #     # split by electrode
+                    #     elecs = np.unique(spike_electrode_indices)
+                    #     for el in elecs:
+                    #         idx = np.where(spike_electrode_indices==el)[0]
+                    #         spiketrain = SpikeTrain(times=spike_times[idx],
+                    #                                 waveforms=spike_waveforms[idx],
+                    #                                 electrode_indices=spike_electrode_indices[idx],
+                    #                                 clusters=spike_clusters[idx],
+                    #                                 metadata=metadata)
+                    #         self._spiketrains.append(spiketrain)
 
         elif self.format == 'openephys':
             filenames = [f for f in os.listdir(self.absolute_foldername)
@@ -850,26 +850,26 @@ class Recording:
                 print('Clusters: ', len(clusters))
                 spike_times = spike_times / self.sample_rate
 
-                if len(clusters) > 1:
-                    for clust in clusters:
-                        idx = np.where(spike_clusters == clust)[0]
-                        spiketrain = SpikeTrain(times=spike_times[idx],
-                                                waveforms=spike_waveforms[idx],
-                                                electrode_indices=spike_electrode_indices[idx],
-                                                clusters=spike_clusters[idx],
-                                                metadata=None)
-                        self._spiketrains.append(spiketrain)
-                else:
-                    # split by electrode
-                    elecs = np.unique(spike_electrode_indices)
-                    for el in elecs:
-                        idx = np.where(spike_electrode_indices == el)[0]
-                        spiketrain = SpikeTrain(times=spike_times[idx],
-                                                waveforms=spike_waveforms[idx],
-                                                electrode_indices=spike_electrode_indices[idx],
-                                                clusters=spike_clusters[idx],
-                                                metadata=None)
-                        self._spiketrains.append(spiketrain)
+                # if len(clusters) > 1:
+                for clust in clusters:
+                    idx = np.where(spike_clusters == clust)[0]
+                    spiketrain = SpikeTrain(times=spike_times[idx],
+                                            waveforms=spike_waveforms[idx],
+                                            electrode_indices=spike_electrode_indices[idx],
+                                            clusters=spike_clusters[idx],
+                                            metadata=None)
+                    self._spiketrains.append(spiketrain)
+                # else:
+                #     # split by electrode
+                #     elecs = np.unique(spike_electrode_indices)
+                #     for el in elecs:
+                #         idx = np.where(spike_electrode_indices == el)[0]
+                #         spiketrain = SpikeTrain(times=spike_times[idx],
+                #                                 waveforms=spike_waveforms[idx],
+                #                                 electrode_indices=spike_electrode_indices[idx],
+                #                                 clusters=spike_clusters[idx],
+                #                                 metadata=None)
+                #         self._spiketrains.append(spiketrain)
 
         self._spiketrains_dirty = False
 

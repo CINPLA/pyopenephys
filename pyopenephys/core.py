@@ -24,7 +24,7 @@ import struct
 import platform
 import xmltodict
 from pyopenephys.tools import *
-from pyopenephys.OpenEphys import *
+from pyopenephys.openephys_tools import *
 
 
 class Channel:
@@ -225,7 +225,7 @@ class Experiment:
                 else:
                     contFile = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f
                                  and '_' + str(self.id) in f][0]
-                data = load(op.join(self._absolute_foldername, contFile))
+                data = loadContinuous(op.join(self._absolute_foldername, contFile))
                 rec_ids = np.unique(data['recordingNumber'])
                 for rec_id in rec_ids:
                     self._recordings.append(Recording(self._absolute_foldername, int(rec_id), self))
@@ -830,7 +830,7 @@ class Recording:
                     return
                 for i_f, fname in enumerate(filenames):
                     print('Loading spikes from ', fname)
-                    data = load(op.join(self.absolute_foldername, fname))
+                    data = loadSpikes(op.join(self.absolute_foldername, fname))
 
                     if i_f == 0:
                         spike_clusters = np.max(data['sortedId'], axis=1).astype(int)

@@ -87,11 +87,10 @@ signals = analog_signals[0]
 fig_an, ax_an = plt.subplots()
 ax_an.plot(signals.times, signals.signal[3])
 
-# plot spiketrains
+# plot raster for spike trains
 fig_sp, ax_sp = plt.subplots()
 for i_s, sp in enumerate(spiketrains):
-    ax_sp.plot()
+    ax_sp.plot(sp.times, i_s*np.ones(len(sp.times)), '|')
 
 plt.show()
 ```
-

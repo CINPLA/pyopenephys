@@ -23,8 +23,8 @@ import locale
 import struct
 import platform
 import xmltodict
-from pyopenephys.tools import *
-from pyopenephys.openephys_tools import *
+from .tools import *
+from .openephys_tools import *
 
 
 class Channel:
@@ -42,8 +42,8 @@ class AnalogSignal:
         self.times = times
 
     def __str__(self):
-        return "<OpenEphys analog signal:shape: {}, sample_rate: {}>".format(
-            self.signal.shape, self.sample_rate
+        return "<OpenEphys analog signal:shape: {}>".format(
+            self.signal.shape
         )
 
 
@@ -87,12 +87,12 @@ class MessageData:
 
 class SpikeTrain:
     def __init__(self, times, waveforms,
-                 electrode_indices, clusters, metadata):
-        assert len(waveforms.shape) == 3
+                 electrode_indices, cluster, metadata):
+        assert len(waveforms.shape) == 3 or len(waveforms.shape) == 2
         self.times = times
         self.waveforms = waveforms
         self.electrode_indices = electrode_indices
-        self.clusters = clusters
+        self.cluster = cluster
         self.metadata = metadata
 
     @property
@@ -107,14 +107,21 @@ class SpikeTrain:
         """
         Alias for channel_count.
         """
-        return self.waveforms.shape[1]
+        if len(self.waveforms.shape) == 3:
+            return self.waveforms.shape[1]
+        else:
+            return 1
+
 
     @property
     def num_frames(self):
         """
         Alias for channel_count.
         """
-        return self.waveforms.shape[2]
+        if len(self.waveforms.shape) == 3:
+            return self.waveforms.shape[2]
+        else:
+            self.waveforms.shape[1]
 
 
 #todo fix channels where they belong!
@@ -453,6 +460,7 @@ class Recording:
     @property
     def spiketrains(self):
         if self._spiketrains_dirty:
+            self._spiketrains = []
             self._read_spiketrains()
 
         return self._spiketrains
@@ -460,6 +468,7 @@ class Recording:
     @property
     def analog_signals(self):
         if self._analog_signals_dirty:
+            self._analog_signals = []
             self._read_analog_signals()
 
         return self._analog_signals
@@ -467,6 +476,7 @@ class Recording:
     @property
     def tracking(self):
         if self._tracking_dirty:
+            self._tracking_signals = []
             self._read_tracking()
 
         return self._tracking_signals
@@ -474,6 +484,7 @@ class Recording:
     @property
     def events(self):
         if self._events_dirty:
+            self._event_signals = []
             self._read_events()
 
         return self._event_signals
@@ -481,6 +492,7 @@ class Recording:
     @property
     def messages(self):
         if self._message_dirty:
+            self._messages = []
             self._read_messages()
 
         return self._messages
@@ -605,8 +617,9 @@ class Recording:
                     for bg in TTL_groups:
                         full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
                         ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
-                        channels = np.load(op.join(processor_folder, bg, 'channels.npy'))
+                        channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
                         channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
+                        channel_states = channel_states/np.max(channel_states).astype(int)
                         metadata_file = op.join(processor_folder, bg, 'metadata.npy')
                         if os.path.exists(metadata_file):
                             metadata = np.load(metadata_file)
@@ -635,7 +648,31 @@ class Recording:
                 ev_file = op.join(self.absolute_foldername, 'all_channels_' + str(int(self.experiment.id)) + '.events')
             data = loadEvents(ev_file)
             node_ids = np.unique(data['nodeId']).astype(int)
-            raise NotImplementedError('TODO')
+
+            for node in node_ids:
+                idx_ev = np.where(data['nodeId'] == node)[0]
+                ts = data['timestamps'][idx_ev] / self.sample_rate
+                channels = data['channel'][idx_ev].astype(int)
+                channel_states = data['eventId'][idx_ev].astype(int)
+                channel_states[channel_states==0] = -1
+                for proc, id in self.sig_chain.items():
+                    if int(id) == int(node):
+                        processor = proc
+                node_id = int(float(node))
+                full_words = None
+                metadata = None
+
+                event_data = EventData(
+                    times=ts,
+                    channels=channels,
+                    channel_states=channel_states,
+                    full_words=full_words,
+                    processor=processor,
+                    node_id=node_id,
+                    metadata=metadata
+                )
+
+                self._event_signals.append(event_data)
 
         self._events_dirty = False
 
@@ -792,26 +829,15 @@ class Recording:
                     clusters = np.unique(spike_clusters)
                     print('Clusters: ', len(clusters))
 
-                    # if len(clusters) > 1:
                     for clust in clusters:
                         idx = np.where(spike_clusters==clust)[0]
                         spiketrain = SpikeTrain(times=spike_times[idx],
                                                 waveforms=spike_waveforms[idx],
                                                 electrode_indices=spike_electrode_indices[idx],
-                                                clusters=spike_clusters[idx],
+                                                cluster=clust,
                                                 metadata=metadata)
                         self._spiketrains.append(spiketrain)
-                    # else:
-                    #     # split by electrode
-                    #     elecs = np.unique(spike_electrode_indices)
-                    #     for el in elecs:
-                    #         idx = np.where(spike_electrode_indices==el)[0]
-                    #         spiketrain = SpikeTrain(times=spike_times[idx],
-                    #                                 waveforms=spike_waveforms[idx],
-                    #                                 electrode_indices=spike_electrode_indices[idx],
-                    #                                 clusters=spike_clusters[idx],
-                    #                                 metadata=metadata)
-                    #         self._spiketrains.append(spiketrain)
+
 
         elif self.format == 'openephys':
             filenames = [f for f in os.listdir(self.absolute_foldername)
@@ -850,26 +876,15 @@ class Recording:
                 print('Clusters: ', len(clusters))
                 spike_times = spike_times / self.sample_rate
 
-                # if len(clusters) > 1:
                 for clust in clusters:
                     idx = np.where(spike_clusters == clust)[0]
                     spiketrain = SpikeTrain(times=spike_times[idx],
                                             waveforms=spike_waveforms[idx],
                                             electrode_indices=spike_electrode_indices[idx],
-                                            clusters=spike_clusters[idx],
+                                            cluster=clust,
                                             metadata=None)
                     self._spiketrains.append(spiketrain)
-                # else:
-                #     # split by electrode
-                #     elecs = np.unique(spike_electrode_indices)
-                #     for el in elecs:
-                #         idx = np.where(spike_electrode_indices == el)[0]
-                #         spiketrain = SpikeTrain(times=spike_times[idx],
-                #                                 waveforms=spike_waveforms[idx],
-                #                                 electrode_indices=spike_electrode_indices[idx],
-                #                                 clusters=spike_clusters[idx],
-                #                                 metadata=None)
-                #         self._spiketrains.append(spiketrain)
+
 
         self._spiketrains_dirty = False
 

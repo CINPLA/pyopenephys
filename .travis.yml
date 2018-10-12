@@ -1,12 +1,15 @@
 language: python
 python:
-  - "3.5"
-  - "3.6"
+- '3.5'
+- '3.6'
 install:
-  - pip install numpy quantities xmltodict
-  - pip install pytest pyaml coverage codecov
-  - python setup.py install
+- pip install numpy quantities xmltodict
+- pip install pytest pyaml coverage codecov
+- python setup.py install
 script:
-  - py.test
+- py.test
 after_success:
-  - codecov
+- codecov
+deploy:
+  password:
+    secure: VKVN11RmZx6OYglxFRK4JK27o35Qad22Nual7kOhhZk22JYS2JKFDfvzxMTDIGAHinZwP/aDfZe95K2Qo+y3vfVYrOqoLu2hp3dQ/nGoYN15eCHIEMWmU44I/EhjVE8oxgYQD+FUMcoXrmu50DksYHMOW9oTZhlvGoQXZYu7y6xSZGc5DtXos8fhMJAPrxY8hw/bW0lV9gch3gGfFQ7Cs8AJKCD5ZX4zf7gbQCol6kdZanHIJtpJczTBZULr6ItT+WK+8T7G4I5ss66DPj47pH7x1mayE+wbUbJent7BvU6NJoGgiMCkr0xqpyPYuSkcadzsmIfuHQRzxWtT7bKOvG5eA9+EOfyk3uSfY/9+0MoQNVodyQvakBPQdKkrFpwjIs8gw0Rb2ZAhDyQpuID8839WKCz5Muqn/GCQJLvs53lM2XPp93lMf3LuFePKeoZfLVt/gTJjJl+YClnnLgaf+Nro5nM3VUGlVzTrENqdxyTL0yqcDoiqAgdT97GKYrig6UxAjbOVzM8m21QU1qA+6kMq9IJAUqLqGJesM9ZzsUJPCGHS93+eNVgtknpKrhg/fr8Sdo/pAkTlJ8xkFwXurOT2RDPIEgU3p6Wdi2tcbqBvs3w0iLvbrY7slrJ7+G5oWKuPWfLw5Uk+asgkQj8I+ViWZ6rAXjzMIk1l3bvd/hE=

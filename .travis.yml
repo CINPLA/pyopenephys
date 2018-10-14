@@ -3,9 +3,9 @@ python:
 - '3.6'
 install:
 - pip install .
-- pip install pytest coverage codecov
+- pip install pytest pytest-cov
 script:
-- py.test
+- py.test --cov=./
 after_success:
 - codecov
 deploy:

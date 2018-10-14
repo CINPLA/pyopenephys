@@ -1,6 +1,5 @@
 language: python
 python:
-- '3.5'
 - '3.6'
 install:
 - pip install .
@@ -8,4 +7,11 @@ install:
 script:
 - py.test
 after_success:
-- codecovx
+- codecov
+deploy:
+  provider: pypi
+  user: alejoe91
+  on:
+    tags: true
+  password:
+    secure: chRiAOifaph0cgZ65jGfA4uAIkFVgUKQMaCJuTSTEpTBBWCxY9YIUtCNtJystp3dQpdtlrsqgQZUIXE4b5mUNPmiqb9Q0lA0iq8ETmb9wvKlVSZ/2DhftF3DctmXIGpWutrfbKJSepbOnUn58w+BctkDr04OYXKz9urbky9j4ID8SOwW/vJFMyWM9ZcBI0y4enRtmSyo1GwPjNlN1d56fzdcLRwJ5mU6mbclxUevTf7JhaC5ryX/ku8BXpgqAkNxVlU05cFr6o5ZiMcCiKwb7mJDaI6ED8wTS2icQ7O2T0G7JAQLfyKceLA4h/QVOfFhq3H9Ctd8XGZ7dEiKAX7BuRgBndW1h67I8gummoCs7D0Skn/pDlZu2rOBPbSEarfnl49QFNbHU/jjDQCN3maRXb49b8ppU8AB6gOYkrONkLFmT1PPELqD8hbyPOQg6Tn5qQHWRGGb56impzIUSXyaXUqySnceIJRCUXVsb0Bb4w+QFUrRuct3mEd2v1YGPwjBK3JbAhAwfxgc8dy33o95SPDtKfZkml9jmca4S5mfyp6XRKK+N1ZoD+iNB5dIWWwHWmAbu70/Gm4yl239SrGBGuGu5193N0CmPx8UGXjDHaj61wnWY+QdP5xGqx8sTmkTdPp5/JFfuKZyoGT5kcizm1ljPH8Jc2CmrWP4roOu0IY=

@@ -7,7 +7,7 @@ entry_points = None
 
 setup(
     name="pyopenephys",
-    version='1.0.0',
+    version='1.0.1',
     author="Alessio Buccino",
     author_email="alessiob@ifi.uio.no",
     description="Python package for parsing Open Ephys data.",

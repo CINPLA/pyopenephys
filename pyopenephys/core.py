@@ -598,9 +598,11 @@ class Recording:
             events_folder = [op.join(self.absolute_foldername, f)
                                     for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
             processor_folders = [op.join(events_folder, f) for f in os.listdir(events_folder)
-                                if 'Tracking_Port' not in f and 'Message_Center' not in f]
+                                if 'Tracking_Port' not in f
+                                and 'Message_Center' not in f
+                                and '.DS_Store' not in f]
             for processor_folder in processor_folders:
-                TTL_groups = [f for f in os.listdir(processor_folder)]
+                TTL_groups = [f for f in os.listdir(processor_folder) if not 'DS_Store' in f]
                 if self.format == 'binary':
                     for bg in TTL_groups:
                         full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
@@ -684,7 +686,9 @@ class Recording:
                 # Check and decode files
                 continuous_folder = [op.join(self.absolute_foldername, f)
                                      for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
-                processor_folder = [op.join(continuous_folder, f) for f in os.listdir(continuous_folder)][0]
+                processor_folder = [op.join(continuous_folder, f)
+                                    for f in os.listdir(continuous_folder)
+                                    if not '.DS_Store' in f][0]
 
                 filenames = [f for f in os.listdir(processor_folder)]
                 if any('.dat' in f for f in filenames):

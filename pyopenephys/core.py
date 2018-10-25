@@ -441,6 +441,13 @@ class Recording:
             return self._software_sample_rate
 
     @property
+    def start_time(self):
+        if self.experiment.acquisition_system is not None:
+            return self._processor_start_time / self.sample_rate
+        else:
+            return self._software_start_time / self.sample_rate
+
+    @property
     def software_sample_rate(self):
         return self._software_sample_rate
 
@@ -550,7 +557,7 @@ class Recording:
             if self.format == 'binary':
                 for tg in text_groups:
                     text = np.load(op.join(message_folder, tg, 'text.npy'))
-                    ts = np.load(op.join(message_folder, tg, 'timestamps.npy'))
+                    ts = np.load(op.join(message_folder, tg, 'timestamps.npy')) / self.sample_rate
                     channels = np.load(op.join(message_folder, tg, 'channels.npy'))
 
                     message_data = MessageData(
@@ -627,6 +634,7 @@ class Recording:
                             metadata = None
 
                         ts = ts / self.sample_rate
+                        ts -= self.start_time
 
                         processor_folder_split = op.split(processor_folder)[-1].split("-")
 
@@ -661,6 +669,7 @@ class Recording:
                 node_id = int(float(node))
                 full_words = None
                 metadata = None
+                ts -= self.start_time
 
                 event_data = EventData(
                     times=ts,
@@ -693,10 +702,9 @@ class Recording:
                     metadata = np.load(op.join(tracking_folder, bg, 'metadata.npy'))
                     data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
-                    # ts = ts / self.sample_rate
-                    ts = ts / self.software_sample_rate
-                    x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
+                    ts = ts / self._software_sample_rate
 
+                    x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
                     tracking_data = TrackingData(
                             times=ts,
                             x=x,
@@ -712,7 +720,8 @@ class Recording:
                 print("Unfortunately, tracking is not saved in 'openephys' format. Use 'binary' instead!")
         else:
             print("Tracking is not found!")
-            self._tracking_dirty = False
+
+        self._tracking_dirty = False
 
 
     def _read_analog_signals(self):
@@ -828,7 +837,6 @@ class Recording:
 
                     clusters = np.unique(spike_clusters)
                     print('Clusters: ', len(clusters))
-
                     for clust in clusters:
                         idx = np.where(spike_clusters==clust)[0]
                         spiketrain = SpikeTrain(times=spike_times[idx],

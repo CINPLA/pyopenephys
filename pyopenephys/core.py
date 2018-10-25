@@ -720,7 +720,7 @@ class Recording:
                 print("Unfortunately, tracking is not saved in 'openephys' format. Use 'binary' instead!")
         else:
             print("Tracking is not found!")
-
+            
         self._tracking_dirty = False
 
 

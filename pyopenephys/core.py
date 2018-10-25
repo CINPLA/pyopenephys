@@ -423,9 +423,9 @@ class Recording:
     @property
     def duration(self):
         if self.experiment.acquisition_system is not None:
-            if not self._analog_signals_dirty and self.nchan != 0:
-                self._duration = (self.analog_signals[0].times[-1] - self.analog_signals[0].times[0])
-                return self._duration
+            # if not self._analog_signals_dirty and self.nchan != 0:
+            self._duration = self.analog_signals[0].times[-1] - self.analog_signals[0].times[0]
+            return self._duration
         if 'Sources/Tracking Port' in self.sig_chain.keys():
             self._duration = self.tracking[0].times[-1] - self.tracking[0].times[0]
             return self._duration
@@ -600,7 +600,6 @@ class Recording:
                     attrs=None #TODO
                 )
 
-
                 self._channel_groups.append(channel_group)
                 self._channel_group_id_to_channel_group[channel_group_id] = channel_group
 
@@ -619,36 +618,65 @@ class Recording:
             processor_folders = [op.join(events_folder, f) for f in os.listdir(events_folder)
                                 if 'Tracking_Port' not in f and 'Message_Center' not in f]
             for processor_folder in processor_folders:
-                TTL_groups = [f for f in os.listdir(processor_folder)]
-                if self.format == 'binary':
-                    for bg in TTL_groups:
-                        full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
-                        ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
-                        channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
-                        channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
-                        channel_states = channel_states/np.max(channel_states).astype(int)
-                        metadata_file = op.join(processor_folder, bg, 'metadata.npy')
-                        if os.path.exists(metadata_file):
-                            metadata = np.load(metadata_file)
-                        else:
-                            metadata = None
+                TTL_groups = [f for f in os.listdir(processor_folder) if 'TTL' in f]
+                for bg in TTL_groups:
+                    full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
+                    ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
+                    channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
+                    channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
+                    channel_states = channel_states/np.max(channel_states).astype(int)
+                    metadata_file = op.join(processor_folder, bg, 'metadata.npy')
+                    if os.path.exists(metadata_file):
+                        metadata = np.load(metadata_file)
+                    else:
+                        metadata = None
 
-                        ts = ts / self.sample_rate
-                        ts -= self.start_time
+                    ts = ts / self.sample_rate
+                    ts -= self.start_time
 
-                        processor_folder_split = op.split(processor_folder)[-1].split("-")
+                    processor_folder_split = op.split(processor_folder)[-1].split("-")
 
-                        event_data = EventData(
-                                times=ts,
-                                channels=channels,
-                                channel_states=channel_states,
-                                full_words=full_words,
-                                processor=processor_folder_split[0],
-                                node_id=int(float(processor_folder_split[1])),
-                                metadata=metadata
-                            )
+                    event_data = EventData(
+                            times=ts,
+                            channels=channels,
+                            channel_states=channel_states,
+                            full_words=full_words,
+                            processor=processor_folder_split[0],
+                            node_id=int(float(processor_folder_split[1])),
+                            metadata=metadata
+                        )
 
-                        self._event_signals.append(event_data)
+                    self._event_signals.append(event_data)
+
+                binary_groups = [f for f in os.listdir(processor_folder) if 'binary' in f]
+                for bg in binary_groups:
+                    full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
+                    ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
+                    channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
+                    channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
+                    channel_states = channel_states / np.max(channel_states).astype(int)
+                    metadata_file = op.join(processor_folder, bg, 'metadata.npy')
+                    if os.path.exists(metadata_file):
+                        metadata = np.load(metadata_file)
+                    else:
+                        metadata = None
+
+                    ts = ts / self.software_sample_rate
+                    ts -= self.start_time
+
+                    processor_folder_split = op.split(processor_folder)[-1].split("-")
+
+                    event_data = EventData(
+                        times=ts,
+                        channels=channels,
+                        channel_states=channel_states,
+                        full_words=full_words,
+                        processor=processor_folder_split[0],
+                        node_id=int(float(processor_folder_split[1])),
+                        metadata=metadata
+                    )
+
+                    self._event_signals.append(event_data)
         elif self.format == 'openephys':
             if self.experiment.id == 1:
                 ev_file = op.join(self.absolute_foldername, 'all_channels.events')
@@ -659,7 +687,7 @@ class Recording:
 
             for node in node_ids:
                 idx_ev = np.where(data['nodeId'] == node)[0]
-                ts = data['timestamps'][idx_ev] / self.sample_rate
+                ts = data['timestamps'][idx_ev] / self.software_sample_rate
                 channels = data['channel'][idx_ev].astype(int)
                 channel_states = data['eventId'][idx_ev].astype(int)
                 channel_states[channel_states==0] = -1
@@ -702,7 +730,8 @@ class Recording:
                     metadata = np.load(op.join(tracking_folder, bg, 'metadata.npy'))
                     data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
-                    ts = ts / self._software_sample_rate
+                    ts = ts / self.software_sample_rate
+                    ts -= self.start_time
 
                     x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
                     tracking_data = TrackingData(
@@ -742,6 +771,8 @@ class Recording:
                     if len(ts) != nsamples:
                         print('Warning: timestamps and nsamples are different!')
                         ts = np.arange(nsamples) / self.sample_rate
+                    else:
+                        ts -= self.start_time
                 else:
                     raise ValueError("'continuous.dat' should be in the folder")
             elif self.format == 'openephys':
@@ -788,7 +819,7 @@ class Recording:
                                 anas_end = (idx_end + 1)*block_len
                                 ts = np.arange(t_start, t_end) / sample_rate
                                 anas = anas[:, anas_start:anas_end]
-                    self._processor_sample_rate = sample_rate
+                    self._processor_sample_rate = sample_rate * pq.Hz
                     nsamples = anas.shape[1]
             # Keep only selected channels
             if self._keep_channels is not None:
@@ -833,6 +864,7 @@ class Recording:
                         metadata = None
 
                     spike_times = spike_times / self.sample_rate
+                    spike_times -= self.start_time
                     processor_folder_split = op.split(processor_folder)[-1].split("-")
 
                     clusters = np.unique(spike_clusters)
@@ -883,7 +915,7 @@ class Recording:
                 clusters = np.unique(spike_clusters)
                 print('Clusters: ', len(clusters))
                 spike_times = spike_times / self.sample_rate
-
+                spike_times -= self.start_time
                 for clust in clusters:
                     idx = np.where(spike_clusters == clust)[0]
                     spiketrain = SpikeTrain(times=spike_times[idx],

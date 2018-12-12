@@ -743,8 +743,8 @@ class Recording:
                             width=w,
                             height=h
                         )
+                    self._tracking_signals.append(tracking_data)
 
-                self._tracking_signals.append(tracking_data)
             elif self.format == 'openephys':
                 print("Unfortunately, tracking is not saved in 'openephys' format. Use 'binary' instead!")
         else:

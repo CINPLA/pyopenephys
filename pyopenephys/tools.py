@@ -4,23 +4,9 @@ from __future__ import with_statement
 
 import quantities as pq
 import os
-import os.path as op
 import numpy as np
 
 
-def read_python(path):
-    from six import exec_
-    path = op.realpath(op.expanduser(path))
-    assert op.exists(path)
-    with open(path, 'r') as f:
-        contents = f.read()
-    metadata = {}
-    exec_(contents, {}, metadata)
-    metadata = {k.lower(): v for (k, v) in metadata.items()}
-    return metadata
-
-
-# TODO require quantities and deal with it
 def clip_anas(analog_signals, times, clipping_times, start_end):
     '''
 
@@ -31,13 +17,9 @@ def clip_anas(analog_signals, times, clipping_times, start_end):
     clipping_times
     start_end
 
-    Returns
-    -------
-
     '''
-
     if len(analog_signals.signal) != 0:
-        times.rescale(pq.s)
+        times = analog_signals.times.rescale(pq.s)
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) ==  1:
@@ -49,17 +31,43 @@ def clip_anas(analog_signals, times, clipping_times, start_end):
             raise AttributeError('clipping_times must be of length 1 or 2')
 
         if len(analog_signals.signal.shape) == 2:
-            anas_clip = analog_signals.signal[:, idx[0]]
+            analog_signals.signal = analog_signals.signal[:, idx[0]]
         else:
-            anas_clip = analog_signals.signal[idx[0]]
-
-        return anas_clip
-    else:
-        return []
+            analog_signals.signal = analog_signals.signal[idx[0]]
+        analog_signals.times = times[idx]
 
 
-def clip_events(digital_signals, clipping_times, start_end):
-    pass
+def clip_events(events, clipping_times, start_end):
+    '''
+
+    Parameters
+    ----------
+    digital_signals
+    clipping_times
+    start_end
+
+    Returns
+    -------
+
+    '''
+    if len(events.times) != 0:
+        times = events.times.rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+        elif len(clipping_times) ==  1:
+            if start_end == 'start':
+                idx = np.where(times > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(times < clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+
+        events.times = times[idx]
+        events.channel_states = events.channel_states[idx]
+        events.channels = events.channels[idx]
+        events.full_words = events.full_words[idx]
+        if events.metadata is not None:
+            events.metadata = events.metadata[idx]
 
 
 def clip_tracking(tracking, clipping_times, start_end):
@@ -75,35 +83,59 @@ def clip_tracking(tracking, clipping_times, start_end):
     -------
 
     '''
-    assert len(tracking.positions) == len(tracking.times)
-
-    track_clip = []
-    t_clip = []
-
-    for i, tr in enumerate(tracking.positions):
-        tracking.times[i].rescale(pq.s)
+    if len(tracking.times) != 0:
+        times = tracking.times.rescale(pq.s)
         if len(clipping_times) == 2:
-            idx = np.where((tracking.times[i] > clipping_times[0]) & (tracking.times[i] < clipping_times[1]))
+            idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) ==  1:
             if start_end == 'start':
-                idx = np.where(tracking.times[i] > clipping_times[0])
+                idx = np.where(times > clipping_times[0])
             elif start_end == 'end':
-                idx = np.where(tracking.times[i] < clipping_times[0])
+                idx = np.where(times < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
 
-        track_clip.append(np.array([led[idx[0]] for led in tr]))
-        if start_end != 'end':
-            times = tracking.times[i][idx[0]] - clipping_times[0]
+        tracking.times = times[idx]
+        tracking.x = tracking.x[idx]
+        tracking.y = tracking.y[idx]
+        tracking.width = tracking.width[idx]
+        tracking.height = tracking.height[idx]
+        tracking.channels = tracking.channels[idx]
+        if tracking.metadata is not None:
+            tracking.metadata = tracking.metadata[idx]
+
+
+def clip_spiketrains(sptr, clipping_times, start_end):
+    '''
+
+    Parameters
+    ----------
+    sptr
+    clipping_times
+    start_end
+
+    Returns
+    -------
+
+    '''
+    if len(sptr.times) != 0:
+        times = sptr.times.rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+        elif len(clipping_times) ==  1:
+            if start_end == 'start':
+                idx = np.where(times > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(times < clipping_times[0])
         else:
-            times = tracking.times[i][idx[0]]
-        t_clip.append(times)
+            raise AttributeError('clipping_times must be of length 1 or 2')
 
-    return track_clip, t_clip
-
-
-def clip_spiketrains(tracking, clipping_times, start_end):
-    pass
+        sptr.times = times[idx]
+        sptr.waveforms = sptr.waveforms[idx]
+        sptr.electrode_indices = sptr.electrode_indices[idx]
+        sptr.cluster = sptr.cluster[idx]
+        if sptr.metadata is not None:
+            sptr.metadata = sptr.metadata[idx]
 
 
 def clip_times(times, clipping_times, start_end='start'):

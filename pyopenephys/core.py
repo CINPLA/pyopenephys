@@ -27,14 +27,6 @@ from .tools import *
 from .openephys_tools import *
 
 
-class Channel:
-    def __init__(self, index, name, gain, channel_id):
-        self.index = index
-        self.id = channel_id
-        self.name = name
-        self.gain = gain
-
-
 class AnalogSignal:
     def __init__(self, channel_id, signal, times):
         self.signal = signal
@@ -77,9 +69,9 @@ class EventData:
 
 
 class MessageData:
-    def __init__(self, times, channels, text):
-        self.times = times
-        self.channels = channels
+    def __init__(self, time, channel, text):
+        self.time = time
+        self.channel = channel
         self.text = text
 
     def __str__(self):
@@ -124,45 +116,12 @@ class SpikeTrain:
             self.waveforms.shape[1]
 
 
-#todo fix channels where they belong!
-class ChannelGroup:
-    def __init__(self, channel_group_id, filename, channels,
-                 fileclass=None, **attrs):
-        self.attrs = attrs
-        self.filename = filename
-        self.id = channel_group_id
-        self.channels = channels
-        self.fileclass = fileclass
-
-    def __str__(self):
-        return "<OpenEphys channel_group {}: channel_count: {}>".format(
-            self.id, len(self.channels)
-        )
-
-    @property
-    def analog_signals(self):
-        ana = self.fileclass.analog_signals[0]
-        analog_signals = []
-        for channel in self.channels:
-            analog_signals.append(AnalogSignal(signal=ana.signal[channel.id],
-                                               channel_id=channel.id,
-                                               times=ana.times))
-        return analog_signals
-
-    @property
-    def spiketrains(self):
-        return [sptr for sptr in self.fileclass.spiketrains
-                if sptr.attrs['channel_group_id'] == self.id]
-
 
 class File:
     """
     Class for reading experimental data from an OpenEphys dataset.
     """
-    def __init__(self, foldername, probefile=None):
-        # TODO assert probefile is a probefile
-        # TODO add default prb map and allow to add it later
-        self.probefile = probefile
+    def __init__(self, foldername):
         self._absolute_foldername = foldername
         self._path, self.relative_foldername = os.path.split(foldername)
 
@@ -212,7 +171,6 @@ class File:
 class Experiment:
     def __init__(self, path, id, file):
         self.file = file
-        self.probefile = file.probefile
         self.id = id
         self.sig_chain = dict()
         self._absolute_foldername = path
@@ -347,46 +305,16 @@ class Experiment:
             recorded_channels = sorted([int(chan) for chan in
                                         self._channel_info['gain'].keys()])
             self._channel_info['channels'] = recorded_channels
-            if self.probefile is not None:
-                self._keep_channels = []
-                self.probefile_ch_mapping = read_python(self.probefile)['channel_groups']
-                for group_idx, group in self.probefile_ch_mapping.items():
-                    group['gain'] = []
-                    # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection
-                    # -> Collapse them into array
-                    for chan, oe_chan in zip(group['channels'],
-                                             group['oe_channels']):
-                        if oe_chan not in recorded_channels:
-                            raise ValueError('Channel "' + str(oe_chan) +
-                                             '" in channel group "' +
-                                             str(group_idx) + '" in probefile' +
-                                             self.probefile +
-                                             ' is not marked as recorded ' +
-                                             'in settings file' +
-                                             self._set_fname)
-                        group['gain'].append(
-                            self._channel_info['gain'][str(oe_chan)]
-                        )
-                        self._keep_channels.append(recorded_channels.index(oe_chan))
-                print('Number of selected channels: ', len(self._keep_channels))
-            else:
-                self.probefile_ch_mapping = None
-                self._keep_channels = None  # HACK
-        else:
-            self.probefile_ch_mapping = None
-            self._keep_channels = None
 
 
 class Recording:
     def __init__(self, path, id, experiment):
         self.experiment = experiment
         self.absolute_foldername = path
-        self.probefile = experiment.probefile
         self.sig_chain = experiment.sig_chain
         self.format = experiment.format
-        self._keep_channels = experiment._keep_channels
+        self.datetime = experiment.datetime
         self.nchan = experiment.nchan
-        self.probefile_ch_mapping = experiment.probefile_ch_mapping
         self.id = id
 
         self._analog_signals_dirty = True
@@ -451,18 +379,6 @@ class Recording:
     def software_sample_rate(self):
         return self._software_sample_rate
 
-    # TODO pass channel info from exp
-    def channel_group(self, channel_id):
-        if self._channel_groups_dirty:
-            self._read_channel_groups()
-        return self._channel_id_to_channel_group[channel_id]
-
-    @property
-    def channel_groups(self):
-        if self._channel_groups_dirty:
-            self._read_channel_groups()
-
-        return self._channel_groups
 
     @property
     def spiketrains(self):
@@ -560,55 +476,18 @@ class Recording:
                     ts = np.load(op.join(message_folder, tg, 'timestamps.npy')) / self.sample_rate
                     channels = np.load(op.join(message_folder, tg, 'channels.npy'))
 
-                    message_data = MessageData(
-                        times=ts,
-                        channels=channels,
-                        text=text,
-                    )
-                    self._messages.append(message_data)
+                    if len(text) > 0:
+                        for t, time, chan in zip(text, ts, channels):
+                            message_data = MessageData(
+                                time=time,
+                                channel=chan,
+                                text=t.decode("utf-8"),
+                            )
+                            self._messages.append(message_data)
         elif self.format == 'openephys':
             pass
 
         self._message_dirty = False
-
-
-    def _read_channel_groups(self):
-        self._channel_id_to_channel_group = {}
-        self._channel_group_id_to_channel_group = {}
-        self._channel_count = 0
-        self._channel_groups = []
-        if self.probefile_ch_mapping is not None:
-            for channel_group_id, channel_info in self.probefile_ch_mapping.items():
-                num_chans = len(channel_info['channels'])
-                self._channel_count += num_chans
-                channels = []
-                for idx, chan in enumerate(channel_info['channels']):
-                    channel = Channel(
-                        index=idx,
-                        channel_id=chan,
-                        name="channel_{}_channel_group_{}".format(chan,
-                                                                  channel_group_id),
-                        gain=channel_info['gain'][idx]
-                    )
-                    channels.append(channel)
-
-                channel_group = ChannelGroup(
-                    channel_group_id=channel_group_id,
-                    filename=None,#TODO,
-                    channels=channels,
-                    fileclass=self,
-                    attrs=None #TODO
-                )
-
-                self._channel_groups.append(channel_group)
-                self._channel_group_id_to_channel_group[channel_group_id] = channel_group
-
-                for chan in channel_info['channels']:
-                    self._channel_id_to_channel_group[chan] = channel_group
-
-        # TODO channel mapping to file
-        self._channel_ids = np.arange(self._channel_count)
-        self._channel_groups_dirty = False
 
 
     def _read_events(self):
@@ -636,17 +515,17 @@ class Recording:
 
                     processor_folder_split = op.split(processor_folder)[-1].split("-")
 
-                    event_data = EventData(
-                            times=ts,
-                            channels=channels,
-                            channel_states=channel_states,
-                            full_words=full_words,
-                            processor=processor_folder_split[0],
-                            node_id=int(float(processor_folder_split[1])),
-                            metadata=metadata
-                        )
-
-                    self._event_signals.append(event_data)
+                    if len(ts) > 0:
+                        event_data = EventData(
+                                times=ts,
+                                channels=channels,
+                                channel_states=channel_states,
+                                full_words=full_words,
+                                processor=processor_folder_split[0],
+                                node_id=int(float(processor_folder_split[1])),
+                                metadata=metadata
+                            )
+                        self._event_signals.append(event_data)
 
                 binary_groups = [f for f in os.listdir(processor_folder) if 'binary' in f]
                 for bg in binary_groups:
@@ -666,17 +545,18 @@ class Recording:
 
                     processor_folder_split = op.split(processor_folder)[-1].split("-")
 
-                    event_data = EventData(
-                        times=ts,
-                        channels=channels,
-                        channel_states=channel_states,
-                        full_words=full_words,
-                        processor=processor_folder_split[0],
-                        node_id=int(float(processor_folder_split[1])),
-                        metadata=metadata
-                    )
+                    if len(ts) > 0:
+                        event_data = EventData(
+                            times=ts,
+                            channels=channels,
+                            channel_states=channel_states,
+                            full_words=full_words,
+                            processor=processor_folder_split[0],
+                            node_id=int(float(processor_folder_split[1])),
+                            metadata=metadata
+                        )
+                        self._event_signals.append(event_data)
 
-                    self._event_signals.append(event_data)
         elif self.format == 'openephys':
             if self.experiment.id == 1:
                 ev_file = op.join(self.absolute_foldername, 'all_channels.events')
@@ -733,17 +613,18 @@ class Recording:
                     ts = ts / self.software_sample_rate
                     ts -= self.start_time
 
-                    x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
-                    tracking_data = TrackingData(
-                            times=ts,
-                            x=x,
-                            y=y,
-                            channels=channels,
-                            metadata=metadata,
-                            width=w,
-                            height=h
-                        )
-                    self._tracking_signals.append(tracking_data)
+                    if len(ts) > 0:
+                        x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
+                        tracking_data = TrackingData(
+                                times=ts,
+                                x=x,
+                                y=y,
+                                channels=channels,
+                                metadata=metadata,
+                                width=w,
+                                height=h
+                            )
+                        self._tracking_signals.append(tracking_data)
 
             elif self.format == 'openephys':
                 print("Unfortunately, tracking is not saved in 'openephys' format. Use 'binary' instead!")
@@ -821,15 +702,9 @@ class Recording:
                                 anas = anas[:, anas_start:anas_end]
                     self._processor_sample_rate = sample_rate * pq.Hz
                     nsamples = anas.shape[1]
-            # Keep only selected channels
-            if self._keep_channels is not None:
-                assert anas.shape[1] == nsamples, 'Assumed wrong shape'
-                anas_keep = anas[self._keep_channels, :]
-            else:
-                anas_keep = anas
             self._analog_signals = [AnalogSignal(
-                channel_id=range(anas_keep.shape[0]),
-                signal=anas_keep,
+                channel_id=range(anas.shape[0]),
+                signal=anas,
                 times=ts,
             )]
         else:
@@ -933,20 +808,22 @@ class Recording:
         if clipping_times is not None:
             if clipping_times is not list:
                 if type(clipping_times[0]) is not pq.quantity.Quantity:
-                    raise AttributeError('clipping_times must be a quantity list of length 1 or 2')
+                    print('clipping_times is not a quantity: seconds is used')
+                    clipping_times = clipping_times * pq.s
 
             clipping_times = [t.rescale(pq.s) for t in clipping_times]
 
             for anas in self.analog_signals:
-                anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
-            for digs in self.digital_in_signals:
-                digs.times = clip_digs(digs, clipping_times, start_end)
-                digs.times = digs.times - clipping_times[0]
+                clip_anas(anas, clipping_times, start_end)
+            for ev in self.events:
+                clip_events(ev, clipping_times, start_end)
             for track in self.tracking:
-                track.positions, track.times = clip_tracking(track, clipping_times,start_end)
+                clip_tracking(track, clipping_times, start_end)
+            for sptr in self.spiketrains:
+                clip_spiketrains(sptr, clipping_times, start_end)
+
 
             self._times = clip_times(self._times, clipping_times, start_end)
-            self._times -= self._times[0]
             self._duration = self._times[-1] - self._times[0]
         else:
             print('Empty clipping times list.')

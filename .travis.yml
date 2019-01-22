@@ -3,7 +3,7 @@ python:
 - '3.6'
 install:
 - pip install .
-- pip install pytest pytest-cov
+- pip install pytest
 script:
 - pytest
 deploy:

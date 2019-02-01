@@ -489,7 +489,6 @@ class Recording:
 
         self._message_dirty = False
 
-
     def _read_events(self):
         if self.format == 'binary':
             events_folder = [op.join(self.absolute_foldername, f)
@@ -503,7 +502,8 @@ class Recording:
                     ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
                     channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
                     channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
-                    channel_states = channel_states/np.max(channel_states).astype(int)
+                    if len(ts) > 0:
+                        channel_states = channel_states/np.max(channel_states).astype(int)
                     metadata_file = op.join(processor_folder, bg, 'metadata.npy')
                     if os.path.exists(metadata_file):
                         metadata = np.load(metadata_file)
@@ -593,7 +593,6 @@ class Recording:
 
         self._events_dirty = False
 
-
     def _read_tracking(self):
         if 'Sources/Tracking Port' in self.sig_chain.keys():
             if self.format == 'binary':
@@ -632,7 +631,6 @@ class Recording:
             print("Tracking is not found!")
             
         self._tracking_dirty = False
-
 
     def _read_analog_signals(self):
         if self.experiment.acquisition_system is not None:
@@ -716,7 +714,6 @@ class Recording:
 
         self._analog_signals_dirty = False
 
-
     def _read_spiketrains(self):
         if self.format == 'binary':
             # Check and decode files
@@ -752,7 +749,6 @@ class Recording:
                                                 cluster=clust,
                                                 metadata=metadata)
                         self._spiketrains.append(spiketrain)
-
 
         elif self.format == 'openephys':
             filenames = [f for f in os.listdir(self.absolute_foldername)

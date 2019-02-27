@@ -379,7 +379,6 @@ class Recording:
     def software_sample_rate(self):
         return self._software_sample_rate
 
-
     @property
     def spiketrains(self):
         if self._spiketrains_dirty:
@@ -419,7 +418,6 @@ class Recording:
             self._read_messages()
 
         return self._messages
-
 
     def _read_sync_message(self):
         info = dict()
@@ -461,7 +459,6 @@ class Recording:
             raise ValueError('Found different processor start times')
 
         return info
-
 
     def _read_messages(self):
         if self.format == 'binary':
@@ -634,6 +631,7 @@ class Recording:
 
     def _read_analog_signals(self):
         if self.experiment.acquisition_system is not None:
+            gain = 0.195 # this is fixed in the open ephys system
             if self.format == 'binary':
                 # Check and decode files
                 continuous_folder = [op.join(self.absolute_foldername, f)
@@ -702,7 +700,7 @@ class Recording:
                     nsamples = anas.shape[1]
             self._analog_signals = [AnalogSignal(
                 channel_id=range(anas.shape[0]),
-                signal=anas,
+                signal=anas * gain,
                 times=ts,
             )]
         else:

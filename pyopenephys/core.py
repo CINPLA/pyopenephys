@@ -28,10 +28,11 @@ from .openephys_tools import *
 
 
 class AnalogSignal:
-    def __init__(self, channel_id, signal, times):
+    def __init__(self, channel_id, signal, times, gain):
         self.signal = signal
         self.channel_id = channel_id
         self.times = times
+        self.gain = gain
 
     def __str__(self):
         return "<OpenEphys analog signal:shape: {}>".format(
@@ -700,14 +701,16 @@ class Recording:
                     nsamples = anas.shape[1]
             self._analog_signals = [AnalogSignal(
                 channel_id=range(anas.shape[0]),
-                signal=anas * gain,
+                signal=anas,
                 times=ts,
+                gain=gain,
             )]
         else:
             self._analog_signals = [AnalogSignal(
                 channel_id=np.array([]),
                 signal=np.array([]),
-                times=np.array([])
+                times=np.array([]),
+                gain=0
             )]
 
         self._analog_signals_dirty = False

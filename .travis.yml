@@ -7,7 +7,6 @@ install:
 script:
 - pytest
 deploy:
-  skip_cleanup: true
   provider: pypi
   user: alejoe91
   on:

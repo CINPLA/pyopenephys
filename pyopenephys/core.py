@@ -77,6 +77,7 @@ class MessageData:
     def __str__(self):
         return "<OpenEphys message data>"
 
+
 class SpikeTrain:
     def __init__(self, times, waveforms,
                  electrode_indices, cluster, metadata):
@@ -470,8 +471,11 @@ class Recording:
             if self.format == 'binary':
                 for tg in text_groups:
                     text = np.load(op.join(message_folder, tg, 'text.npy'))
-                    ts = np.load(op.join(message_folder, tg, 'timestamps.npy')) / self.sample_rate
+                    ts = np.load(op.join(message_folder, tg, 'timestamps.npy'))
                     channels = np.load(op.join(message_folder, tg, 'channels.npy'))
+
+                    ts = ts / self.sample_rate
+                    ts -= self.start_time
 
                     if len(text) > 0:
                         for t, time, chan in zip(text, ts, channels):

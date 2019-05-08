@@ -631,7 +631,7 @@ class Recording:
                 print("Unfortunately, tracking is not saved in 'openephys' format. Use 'binary' instead!")
         else:
             print("Tracking is not found!")
-            
+
         self._tracking_dirty = False
 
     def _read_analog_signals(self):
@@ -640,10 +640,15 @@ class Recording:
             if self.format == 'binary':
                 # Check and decode files
                 continuous_folder = [op.join(self.absolute_foldername, f)
-                                     for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
-                processor_folder = [op.join(continuous_folder, f) for f in os.listdir(continuous_folder)][0]
-
+                                      for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
+                processor_folders = [op.join(continuous_folder, f) for f in os.listdir(continuous_folder)]
+                if len(processor_folders) > 1:
+                    for c in processor_folders:
+                        # only get source continuous processors
+                        if 'Rhythm_FPGA' in c or 'Intan' in c or 'File' in c:
+                            processor_folder = c
                 filenames = [f for f in os.listdir(processor_folder)]
+
                 if any('.dat' in f for f in filenames):
                     datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
                     print('.dat: ', datfile)

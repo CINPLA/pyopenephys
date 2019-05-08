@@ -13,9 +13,9 @@ In order to install the pyopenephys package, open a terminal and run:
 
 If you want to install from sources and get the latest updates, clone the repo and install locally:
 
-```
-git clone https://github.com/CINPLA/py-open-ephys
-cd py-open-ephys
+```bash
+git clone https://github.com/CINPLA/pyopenephys
+cd pyopenephys
 python setup.py install (or develop)
 ```
 

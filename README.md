@@ -25,21 +25,21 @@ Pyopenephys allows the user to load data recorded with the Open Ephys. Currently
 
 The first step is creating a `File` object. It only requires to pass the paht to the recording folder.
 
-```
+```python
 import pyopenephys
 file = pyopenephys.File("path-to-recording-folder") 
 ```
 
 The file object contains the different experiments (corresponding to different settings files) and each experiment contains a set of recordings.
 
-```
+```python
 # all experiments
 experiments = file.experiments
 print(len(experiments))
 
 # recordings of first experiment
 experiment = experiments[0]
-recordings = experiment1.recordings
+recordings = experiment.recordings
 print(len(experiments))
 
 # access first recording
@@ -63,7 +63,7 @@ Recordings contain the actual data:
 
 With a few lines of code, the data and relevant information can be easily parsed and accessed:
 
-```
+```python
 import pyopenephys
 import matplotlib.pylab as plt
 

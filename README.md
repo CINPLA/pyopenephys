@@ -3,7 +3,7 @@
 [![codecov](https://codecov.io/gh/CINPLA/py-open-ephys/branch/master/graph/badge.svg)](https://codecov.io/gh/CINPLA/py-open-ephys)
 
 # pyopenephys
-Python reader for Open Ephys (www.open-ephys.org).
+Python reader for [Open Ephys](www.open-ephys.org).
 
 ## Installation
 
@@ -16,12 +16,13 @@ If you want to install from sources and get the latest updates, clone the repo a
 ```bash
 git clone https://github.com/CINPLA/pyopenephys
 cd pyopenephys
-python setup.py install (or develop)
+python setup.py install 
+# use 'python setup.py develop' to install fixed bugs 
 ```
 
 ## Basic Usage
 
-Pyopenephys allows the user to load data recorded with the Open Ephys. Currently, only the **binary** (recommended) and **openephys** (support for this format will be dropped in future releases) are supported. 
+Pyopenephys allows the user to load data recorded with [Open Ephys](www.open-ephys.org). Currently, only the **binary** (recommended) and **openephys** (support for this format will be dropped in future releases) are supported. 
 
 The first step is creating a `File` object. It only requires to pass the paht to the recording folder.
 
@@ -48,8 +49,8 @@ recording = recordings[0]
 
 Experiments store some useful information: 
 - `experiment.datetime` contains the starting date and time of the experiment creation
-- `experiment.sig_chain` is a dictionary containing the processors and nodeIds in the signal chain
-- `experiment.settings` is a dictionary woth the parsed setting.xml file
+- `experiment.sig_chain` is a dictionary containing the processors and nodes in the signal chain
+- `experiment.settings` is a dictionary with the parsed setting.xml file
 - `experiment.acquisition_system` contains the system used to input continuous data (e.g. 'Rhythm FPGA')
 
 Recordings contain the actual data: 
@@ -73,8 +74,8 @@ experiment = file.experiments[0]
 # recording 1 
 recording = experiment.recordings[0]
 
-print('Duration: ', recoridng.duration)
-print('Sampling Rate: ', recoridng.sample_rate)
+print('Duration: ', recording.duration)
+print('Sampling Rate: ', recording.sample_rate)
 
 analog_signals = recording.analog_signals
 events_data = recording.events

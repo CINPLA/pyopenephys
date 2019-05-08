@@ -647,6 +647,8 @@ class Recording:
                         # only get source continuous processors
                         if 'Rhythm_FPGA' in c or 'Intan' in c or 'File' in c:
                             processor_folder = c
+                else:
+                    processor_folder = processor_folders[0]
                 filenames = [f for f in os.listdir(processor_folder)]
 
                 if any('.dat' in f for f in filenames):

@@ -503,31 +503,44 @@ class Recording:
                     full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
                     ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
                     channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
+                    unique_channels = np.unique(channels)
                     channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
-                    if len(ts) > 0:
-                        channel_states = channel_states/np.max(channel_states).astype(int)
                     metadata_file = op.join(processor_folder, bg, 'metadata.npy')
                     if os.path.exists(metadata_file):
                         metadata = np.load(metadata_file)
                     else:
                         metadata = None
 
-                    ts = ts / self.sample_rate
-                    ts -= self.start_time
+                    for chan in unique_channels:
+                        chan_idx = np.where(channels == chan)
+                        chans = channels[chan_idx]
+                        fw_chans = full_words[chan_idx]
+                        if metadata is not None:
+                            metadata_chan = metadata[chan_idx]
+                        else:
+                            metadata_chan = None
+                        ts_chans = ts[chan_idx]
+                        if len(ts_chans) > 0:
+                            chan_states = channel_states[chan_idx] / np.max(channel_states[chan_idx]).astype(int)
+                        else:
+                            chan_states = None
 
-                    processor_folder_split = op.split(processor_folder)[-1].split("-")
+                        ts_chans = ts_chans / self.sample_rate
+                        ts_chans -= self.start_time
 
-                    if len(ts) > 0:
-                        event_data = EventData(
-                                times=ts,
-                                channels=channels,
-                                channel_states=channel_states,
-                                full_words=full_words,
-                                processor=processor_folder_split[0],
-                                node_id=int(float(processor_folder_split[1])),
-                                metadata=metadata
-                            )
-                        self._event_signals.append(event_data)
+                        processor_folder_split = op.split(processor_folder)[-1].split("-")
+
+                        if len(ts) > 0:
+                            event_data = EventData(
+                                    times=ts_chans,
+                                    channels=chans,
+                                    channel_states=chan_states,
+                                    full_words=fw_chans,
+                                    processor=processor_folder_split[0],
+                                    node_id=int(float(processor_folder_split[1])),
+                                    metadata=metadata_chan
+                                )
+                            self._event_signals.append(event_data)
 
                 binary_groups = [f for f in os.listdir(processor_folder) if 'binary' in f]
                 for bg in binary_groups:

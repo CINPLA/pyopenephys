@@ -1,5 +1,8 @@
 from setuptools import setup, find_packages
-# import pyopenephys
+
+d = {}
+exec(open("pyopenephys/version.py").read(), None, d)
+version = d['version']
 
 long_description = open("README.md").read()
 
@@ -7,7 +10,7 @@ entry_points = None
 
 setup(
     name="pyopenephys",
-    version='1.0.6',
+    version=version,
     author="Alessio Buccino",
     author_email="alessiob@ifi.uio.no",
     description="Python package for parsing Open Ephys data.",

@@ -5,6 +5,7 @@ from __future__ import with_statement
 import quantities as pq
 import os
 import numpy as np
+import json
 
 
 def clip_anas(analog_signals, times, clipping_times, start_end):
@@ -179,3 +180,27 @@ def read_analog_binary_signals(filehandle, numchan):
     samples = np.transpose(samples)
 
     return samples, nsamples
+
+
+def parse_oebin(oebin_file):
+    with open(oebin_file, 'r') as f:
+        structure = json.load(f)
+
+    # if 'continuous' in structure.keys():
+    continuous = structure['continuous']
+    folder_names = []
+    sample_rates = []
+    processor_names = []
+    nchans = []
+    chans_info = []
+    for source in continuous:
+        folder_names.append(source["folder_name"])
+        sample_rates.append(source["sample_rate"])
+        processor_names.append(source["source_processor_name"])
+        nchans.append(source["num_channels"])
+        chan_info = {}
+        for i, chan in enumerate(source["channels"]):
+            chan_info[i] = chan
+        chans_info.append(chan_info)
+
+    return folder_names, sample_rates, processor_names, nchans, chans_info

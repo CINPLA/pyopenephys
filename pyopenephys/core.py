@@ -1,13 +1,5 @@
 """
 Python library for reading OpenEphys files.
-Depends on: sys
-            os
-            glob
-            datetime
-            numpy
-            quantities
-            xmljson
-            xmltodict
 
 Authors: Alessio Buccino @CINPLA,
          Svenn-Arne Dragly @CINPLA,
@@ -23,6 +15,9 @@ import locale
 import struct
 import platform
 import xmltodict
+from distutils.version import StrictVersion
+from pathlib import Path
+
 from .tools import *
 from .openephys_tools import *
 
@@ -54,6 +49,7 @@ class TrackingData:
         return "<OpenEphys tracking data: times shape: {}, positions shape: {}>".format(
             self.times.shape, self.x.shape
         )
+
 
 class EventData:
     def __init__(self, times, channels, channel_states, full_words, processor, node_id, metadata=None):
@@ -106,7 +102,6 @@ class SpikeTrain:
         else:
             return 1
 
-
     @property
     def num_frames(self):
         """
@@ -118,11 +113,11 @@ class SpikeTrain:
             self.waveforms.shape[1]
 
 
-
 class File:
     """
     Class for reading experimental data from an OpenEphys dataset.
     """
+
     def __init__(self, foldername):
         self._absolute_foldername = foldername
         self._path, self.relative_foldername = os.path.split(foldername)
@@ -156,7 +151,6 @@ class File:
         elif np.any([f.endswith('nwb') for f in files]):
             self.format = 'nwb'
 
-
     @property
     def absolute_foldername(self):
         return self._absolute_foldername
@@ -188,10 +182,10 @@ class Experiment:
             if self.acquisition_system is not None:
                 if self.id == 1:
                     contFile = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f
-                                 and len(f.split('_')) == 2][0]
+                                and len(f.split('_')) == 2][0]
                 else:
                     contFile = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f
-                                 and '_' + str(self.id) in f][0]
+                                and '_' + str(self.id) in f][0]
                 data = loadContinuous(op.join(self._absolute_foldername, contFile))
                 rec_ids = np.unique(data['recordingNumber'])
                 for rec_id in rec_ids:
@@ -203,8 +197,8 @@ class Experiment:
             self._path = op.dirname(path)
             self._read_settings(id)
             recording_names = [f for f in os.listdir(self._absolute_foldername)
-                                       if os.path.isdir(op.join(self._absolute_foldername, f))
-                                       and 'recording' in f]
+                               if os.path.isdir(op.join(self._absolute_foldername, f))
+                               and 'recording' in f]
 
             rec_ids = [int(rec[-1]) for rec in recording_names]
             for (rel_path, id) in zip(recording_names, rec_ids):
@@ -228,7 +222,7 @@ class Experiment:
         return self._recordings
 
     def _read_settings(self, id):
-        print('Loading Open-Ephys: reading settings.xml...')
+        print('Loading Open-Ephys: reading settings...')
         if id == 1:
             set_fname = [fname for fname in os.listdir(self._path)
                          if fname == 'settings.xml']
@@ -237,87 +231,111 @@ class Experiment:
                          if fname.startswith('settings') and fname.endswith('.xml') and str(id) in fname]
 
         if not len(set_fname) == 1:
-            raise IOError('Unique settings file not found')
-
-        self._set_fname = op.join(self._path, set_fname[0])
-        with open(self._set_fname) as f:
-            xmldata = f.read()
-            self.settings  = xmltodict.parse(xmldata)['SETTINGS']
-        # read date in US format
-        if platform.system() == 'Windows':
-            locale.setlocale(locale.LC_ALL, 'english')
-        elif platform.system() == 'Darwin':
-            # bad hack...
-            try:
-                locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
-            except Exception:
-                pass
-        else:
-            locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
-        self._start_datetime = datetime.strptime(self.settings['INFO']['DATE'], '%d %b %Y %H:%M:%S')
-        self._channel_info = {}
-        self.nchan = 0
-        if isinstance(self.settings['SIGNALCHAIN'], list):
-            sigchain_iter = self.settings['SIGNALCHAIN']
-        else:
-            sigchain_iter = [self.settings['SIGNALCHAIN']]
-        for sigchain in sigchain_iter:
-            if isinstance(sigchain['PROCESSOR'], list):
-                processor_iter = sigchain['PROCESSOR']
-            else:
-                processor_iter = [sigchain['PROCESSOR']]
-            for processor in processor_iter:
-                self.sig_chain.update({processor['@name']: processor['@NodeId']})
-                if 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1':
-                    # recorder
-                    self.acquisition_system = processor['@name'].split('/')[-1]
-                    self._channel_info['gain'] = {}
-
-                    # gain for all channels
-                    gain = {ch['@number']: float(ch['@gain']) * pq.uV  # TODO assert is uV
-                            for chs in processor['CHANNEL_INFO'].values()
-                            for ch in chs}
-                    for chan in processor['CHANNEL']:
-                        if chan['SELECTIONSTATE']['@record'] == '1':
-                            self.nchan += 1
-                            chnum = chan['@number']
-                            self._channel_info['gain'][chnum] = gain[chnum]
-                elif 'CHANNEL' in processor.keys() and processor['@isSource'] == '1':
-                    # recorder
-                    self._ephys = True
-                    self.acquisition_system = processor['@name'].split('/')[-1]
-                    self._channel_info['gain'] = {}
-
-                    for chan in processor['CHANNEL']:
-                        if chan['SELECTIONSTATE']['@record'] == '1':
-                            self.nchan += 1
-                            chnum = chan['@number']
-                            self._channel_info['gain'][chnum] = 1
-
-        # Check openephys format
-        if self.settings['CONTROLPANEL']['@recordEngine'] == 'OPENEPHYS':
-            self.format = 'openephys'
-        elif self.settings['CONTROLPANEL']['@recordEngine'] == 'RAWBINARY':
-            self.format = 'binary'
-        else:
+            # raise IOError('Unique settings file not found')
+            print("settings.xml not found. Can't load signal chain information")
+            self._set_fname = None
+            self.sig_chain = None
+            self.setting = None
             self.format = None
-        print('Decoding data from ', self.format, ' format')
+            self.nchan = None
+            self._start_datetime = datetime(1970, 1, 1)
+        else:
+            self._set_fname = op.join(self._path, set_fname[0])
+            with open(self._set_fname) as f:
+                xmldata = f.read()
+                self.settings = xmltodict.parse(xmldata)['SETTINGS']
+            # read date in US format
+            if platform.system() == 'Windows':
+                locale.setlocale(locale.LC_ALL, 'english')
+            elif platform.system() == 'Darwin':
+                # bad hack...
+                try:
+                    locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+                except Exception:
+                    pass
+            else:
+                locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+            self._start_datetime = datetime.strptime(self.settings['INFO']['DATE'], '%d %b %Y %H:%M:%S')
+            self._channel_info = {}
+            self.nchan = 0
+            if isinstance(self.settings['SIGNALCHAIN'], list):
+                sigchain_iter = self.settings['SIGNALCHAIN']
+            else:
+                sigchain_iter = [self.settings['SIGNALCHAIN']]
+            for sigchain in sigchain_iter:
+                if isinstance(sigchain['PROCESSOR'], list):
+                    processor_iter = sigchain['PROCESSOR']
+                else:
+                    processor_iter = [sigchain['PROCESSOR']]
+                for processor in processor_iter:
+                    self.sig_chain.update({processor['@name']: processor['@NodeId']})
+                    if 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1':
+                        # recorder
+                        self.acquisition_system = processor['@name'].split('/')[-1]
+                        self._channel_info['gain'] = {}
 
-        if self.acquisition_system is not None:
-            recorded_channels = sorted([int(chan) for chan in
-                                        self._channel_info['gain'].keys()])
-            self._channel_info['channels'] = recorded_channels
+                        # gain for all channels
+                        gain = {ch['@number']: float(ch['@gain']) * pq.uV  # TODO assert is uV
+                                for chs in processor['CHANNEL_INFO'].values()
+                                for ch in chs}
+                        for chan in processor['CHANNEL']:
+                            if chan['SELECTIONSTATE']['@record'] == '1':
+                                self.nchan += 1
+                                chnum = chan['@number']
+                                self._channel_info['gain'][chnum] = gain[chnum]
+                    elif 'CHANNEL' in processor.keys() and processor['@isSource'] == '1':
+                        # recorder
+                        self._ephys = True
+                        self.acquisition_system = processor['@name'].split('/')[-1]
+                        self._channel_info['gain'] = {}
 
+                        for chan in processor['CHANNEL']:
+                            if chan['SELECTIONSTATE']['@record'] == '1':
+                                self.nchan += 1
+                                chnum = chan['@number']
+                                self._channel_info['gain'][chnum] = 1
 
+            # Check openephys format
+            if self.settings['CONTROLPANEL']['@recordEngine'] == 'OPENEPHYS':
+                self.format = 'openephys'
+            elif self.settings['CONTROLPANEL']['@recordEngine'] == 'RAWBINARY':
+                self.format = 'binary'
+            else:
+                self.format = None
+            print('Decoding data from ', self.format, ' format')
+
+            if self.acquisition_system is not None:
+                recorded_channels = sorted([int(chan) for chan in
+                                            self._channel_info['gain'].keys()])
+                self._channel_info['channels'] = recorded_channels
+
+#TODO fix oebin and handling of channels info (e.g. gain etc.) Use oebin instead of settings.xml
 class Recording:
     def __init__(self, path, id, experiment):
         self.experiment = experiment
-        self.absolute_foldername = path
-        self.sig_chain = experiment.sig_chain
+        self.absolute_foldername = Path(path)
         self.format = experiment.format
         self.datetime = experiment.datetime
         self.nchan = experiment.nchan
+        self.sig_chain = experiment.sig_chain
         self.id = id
+        self._oebin = None
+
+        if StrictVersion(self.experiment.settings['INFO']['VERSION']) >= StrictVersion('0.4.4'):
+            oebin_files = [f for f in self.absolute_foldername.iterdir() if 'oebin' in f.name]
+            if len(oebin_files) == 1:
+                print("Reading oebin file")
+                with oebin_files[0].open('r') as f:
+                    self._oebin = json.load(f)
+            elif len(oebin_files) == 0:
+                raise FileNotFoundError("'structre.oebin' file not found! Impossible to retrieve configuration "
+                                        "information")
+            else:
+                raise Exception("Multiple oebin files found. Impossible to retrieve configuration information")
+        else:
+            # as it was
+            self._has_oebin = False
+            pass
 
         self._analog_signals_dirty = True
         self._digital_signals_dirty = True
@@ -336,7 +354,6 @@ class Recording:
         self._spiketrains = []
 
         self.__dict__.update(self._read_sync_message())
-
 
     @property
     def times(self):
@@ -364,18 +381,18 @@ class Recording:
             return self._duration
 
     @property
-    def sample_rate(self):
+    def sample_rates(self):
         if self.experiment.acquisition_system is not None:
-            return self._processor_sample_rate
+            return self._processor_sample_rates
         else:
-            return self._software_sample_rate
+            return [self._software_sample_rate]
 
     @property
-    def start_time(self):
+    def start_times(self):
         if self.experiment.acquisition_system is not None:
-            return self._processor_start_time / self.sample_rate
+            return np.array(self._processor_start_times) / self.sample_rates
         else:
-            return self._software_start_time / self.sample_rate
+            return [self._software_start_time / self.sample_rates[0]]
 
     @property
     def software_sample_rate(self):
@@ -426,14 +443,16 @@ class Recording:
         stimes = []
 
         if self.format == 'binary':
-            sync_messagefile = [f for f in os.listdir(self.absolute_foldername) if 'sync_messages' in f][0]
+            sync_messagefile = [f for f in self.absolute_foldername.iterdir() if 'sync_messages' in f.name][0]
         elif self.format == 'openephys':
             if self.experiment.id == 1:
-                sync_messagefile = 'messages.events'
+                sync_messagefile = self.absolute_foldername / 'messages.events'
             else:
-                sync_messagefile = 'messages_' + str(self.experiment.id) + '.events'
+                sync_messagefile = self.absolute_foldername / f'messages_{self.experiment.id}.events'
 
-        with open(op.join(self.absolute_foldername, sync_messagefile), "r") as fh:
+        with sync_messagefile.open("r") as fh:
+            info['_processor_sample_rates'] = []
+            info['_processor_start_times'] = []
             while True:
                 spl = fh.readline().split()
                 if not spl:
@@ -451,29 +470,25 @@ class Recording:
                     hz_start = stime[-1].find('Hz')
                     stimes.append(float(stime[-1][:hz_start]))
                     sr = float(stime[-1][:hz_start]) * pq.Hz
-                    info['_processor_sample_rate'] = sr
-                    info['_processor_start_time'] = int(stime[0])
+                    info['_processor_sample_rates'].append(sr)
+                    info['_processor_start_times'].append(int(stime[0]))
                 else:
                     message = {'time': int(spl[0]),
                                'message': ' '.join(spl[1:])}
                     info['messages'].append(message)
-        if any(np.diff(np.array(stimes, dtype=int))):
-            raise ValueError('Found different processor start times')
 
         return info
 
     def _read_messages(self):
         if self.format == 'binary':
-            events_folder = [op.join(self.absolute_foldername, f)
-                             for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
-            message_folder = [op.join(events_folder, f) for f in os.listdir(events_folder)
-                               if 'Message_Center' in f][0]
-            text_groups = [f for f in os.listdir(message_folder)]
+            events_folder = [f for f in self.absolute_foldername.iterdir() if 'events' in f.name][0]
+            message_folder = [f for f in events_folder.iterdir() if 'Message_Center' in f.name][0]
+            text_groups = [f for f in message_folder.iterdir()]
             if self.format == 'binary':
                 for tg in text_groups:
-                    text = np.load(op.join(message_folder, tg, 'text.npy'))
-                    ts = np.load(op.join(message_folder, tg, 'timestamps.npy'))
-                    channels = np.load(op.join(message_folder, tg, 'channels.npy'))
+                    text = np.load(tg / 'text.npy')
+                    ts = np.load(tg / 'timestamps.npy')
+                    channels = np.load(tg / 'channels.npy')
 
                     ts = ts / self.sample_rate
                     ts -= self.start_time
@@ -493,20 +508,34 @@ class Recording:
 
     def _read_events(self):
         if self.format == 'binary':
-            events_folder = [op.join(self.absolute_foldername, f)
-                                    for f in os.listdir(self.absolute_foldername) if 'events' in f][0]
-            processor_folders = [op.join(events_folder, f) for f in os.listdir(events_folder)
-                                if 'Tracking_Port' not in f and 'Message_Center' not in f]
+            events_folder = [f for f in self.absolute_foldername.iterdir() if 'events' in f.name][0]
+            events = []
+            processor_folders = []
+
+            if self._oebin is not None:
+                if 'events' in self._oebin.keys():
+                    events = self._oebin["events"]
+                if len(events) > 0:
+                    processor_folders = []
+                    for ev in events:
+                        # other methods to read tracking and messages
+                        if 'Tracking_Port' not in ev['folder_name'] and 'Message_Center' not in ev['folder_name']:
+                            processor_folders.append((events_folder / ev['folder_name']).parent)
+
+            else:
+                processor_folders = [f for f in events_folder.iterdir() if 'Tracking_Port' not in f.name and
+                                     'Message_Center' not in f.name and not f.startswith('.')]
+
             for processor_folder in processor_folders:
-                TTL_groups = [f for f in os.listdir(processor_folder) if 'TTL' in f]
-                for bg in TTL_groups:
-                    full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
-                    ts = np.load(op.join(processor_folder, bg, 'timestamps.npy'))
-                    channels = np.load(op.join(processor_folder, bg, 'channels.npy')).astype(int)
+                TTL_groups = [f for f in processor_folder.iterdir() if 'TTL' in f.name]
+                for ttl in TTL_groups:
+                    full_words = np.load(ttl / 'full_words.npy')
+                    ts = np.load(ttl / 'timestamps.npy')
+                    channels = np.load(ttl / 'channels.npy').astype(int)
                     unique_channels = np.unique(channels)
-                    channel_states = np.load(op.join(processor_folder, bg, 'channel_states.npy'))
-                    metadata_file = op.join(processor_folder, bg, 'metadata.npy')
-                    if os.path.exists(metadata_file):
+                    channel_states = np.load(ttl / 'channel_states.npy')
+                    metadata_file = ttl / 'metadata.npy'
+                    if metadata_file.is_file():
                         metadata = np.load(metadata_file)
                     else:
                         metadata = None
@@ -532,16 +561,17 @@ class Recording:
 
                         if len(ts) > 0:
                             event_data = EventData(
-                                    times=ts_chans,
-                                    channels=chans,
-                                    channel_states=chan_states,
-                                    full_words=fw_chans,
-                                    processor=processor_folder_split[0],
-                                    node_id=int(float(processor_folder_split[1])),
-                                    metadata=metadata_chan
-                                )
+                                times=ts_chans,
+                                channels=chans,
+                                channel_states=chan_states,
+                                full_words=fw_chans,
+                                processor=processor_folder_split[0],
+                                node_id=int(float(processor_folder_split[1])),
+                                metadata=metadata_chan
+                            )
                             self._event_signals.append(event_data)
 
+                #TODO update to Pathlib
                 binary_groups = [f for f in os.listdir(processor_folder) if 'binary' in f]
                 for bg in binary_groups:
                     full_words = np.load(op.join(processor_folder, bg, 'full_words.npy'))
@@ -585,7 +615,7 @@ class Recording:
                 ts = data['timestamps'][idx_ev] / self.software_sample_rate
                 channels = data['channel'][idx_ev].astype(int)
                 channel_states = data['eventId'][idx_ev].astype(int)
-                channel_states[channel_states==0] = -1
+                channel_states[channel_states == 0] = -1
                 for proc, id in self.sig_chain.items():
                     if int(id) == int(node):
                         processor = proc
@@ -630,14 +660,14 @@ class Recording:
                     if len(ts) > 0:
                         x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
                         tracking_data = TrackingData(
-                                times=ts,
-                                x=x,
-                                y=y,
-                                channels=channels,
-                                metadata=metadata,
-                                width=w,
-                                height=h
-                            )
+                            times=ts,
+                            x=x,
+                            y=y,
+                            channels=channels,
+                            metadata=metadata,
+                            width=w,
+                            height=h
+                        )
                         self._tracking_signals.append(tracking_data)
 
             elif self.format == 'openephys':
@@ -648,40 +678,45 @@ class Recording:
         self._tracking_dirty = False
 
     def _read_analog_signals(self):
+        self._analog_signals = []
         if self.experiment.acquisition_system is not None:
-            gain = 0.195 # this is fixed in the open ephys system
+            gain = 0.195  # this is fixed in the open ephys system
             if self.format == 'binary':
                 # Check and decode files
                 continuous_folder = [op.join(self.absolute_foldername, f)
-                                      for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
-                processor_folders = [op.join(continuous_folder, f) for f in os.listdir(continuous_folder)]
-                if len(processor_folders) > 1:
-                    for c in processor_folders:
-                        # only get source continuous processors
-                        if 'Rhythm_FPGA' in c or 'Intan' in c or 'File' in c:
-                            processor_folder = c
-                else:
-                    processor_folder = processor_folders[0]
-                filenames = [f for f in os.listdir(processor_folder)]
+                                     for f in os.listdir(self.absolute_foldername) if 'continuous' in f][0]
 
-                if any('.dat' in f for f in filenames):
-                    datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
-                    print('.dat: ', datfile)
-                    with open(op.join(processor_folder, datfile), "rb") as fh:
-                        anas, nsamples = read_analog_binary_signals(fh, self.nchan)
-                    ts = np.load(op.join(processor_folder, 'timestamps.npy')) / self.sample_rate
-                    if len(ts) != nsamples:
-                        print('Warning: timestamps and nsamples are different!')
-                        ts = np.arange(nsamples) / self.sample_rate
+                for (processor_folder, sample_rate, nchan, chan_info) in zip(self._continuous_folder_names,
+                                                                             self._sample_rates, self._nchans,
+                                                                             self._chans_info):
+                    data_folder = op.join(continuous_folder, processor_folder)
+                    filenames = [f for f in os.listdir(data_folder)]
+
+                    if any('.dat' in f for f in filenames):
+                        datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
+                        print('.dat: ', datfile)
+                        with open(op.join(data_folder, datfile), "rb") as fh:
+                            anas, nsamples = read_analog_binary_signals(fh, nchan)
+                        ts = np.load(op.join(data_folder, 'timestamps.npy')) / sample_rate
+                        if len(ts) != nsamples:
+                            print('Warning: timestamps and nsamples are different!')
+                            ts = np.arange(nsamples) / sample_rate
+                        # else:
+                        #     ts -= self.start_time
+
+                        self._analog_signals.append(AnalogSignal(
+                            channel_id=range(anas.shape[0]),
+                            signal=anas,
+                            times=ts,
+                            gain=gain,
+                        ))
                     else:
-                        ts -= self.start_time
-                else:
-                    raise ValueError("'continuous.dat' should be in the folder")
+                        raise ValueError("'continuous.dat' should be in the folder")
             elif self.format == 'openephys':
                 # Find continuous CH data
                 if self.experiment.id == 1:
                     contFiles = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
-                                 and len(f.split('_'))==2]
+                                 and len(f.split('_')) == 2]
                 else:
                     contFiles = [f for f in os.listdir(self.absolute_foldername) if 'continuous' in f and 'CH' in f
                                  and '_' + str(self.experiment.id) in f]
@@ -717,18 +752,17 @@ class Recording:
                                 idx_end = idx_rec[-1]
                                 t_start = timestamps[idx_start]
                                 t_end = timestamps[idx_end] + block_len
-                                anas_start = idx_start*block_len
-                                anas_end = (idx_end + 1)*block_len
+                                anas_start = idx_start * block_len
+                                anas_end = (idx_end + 1) * block_len
                                 ts = np.arange(t_start, t_end) / sample_rate
                                 anas = anas[:, anas_start:anas_end]
                     self._processor_sample_rate = sample_rate * pq.Hz
-                    nsamples = anas.shape[1]
-            self._analog_signals = [AnalogSignal(
-                channel_id=range(anas.shape[0]),
-                signal=anas,
-                times=ts,
-                gain=gain,
-            )]
+                self._analog_signals = [AnalogSignal(
+                    channel_id=range(anas.shape[0]),
+                    signal=anas,
+                    times=ts,
+                    gain=gain,
+                )]
         else:
             self._analog_signals = [AnalogSignal(
                 channel_id=np.array([]),
@@ -767,7 +801,7 @@ class Recording:
                     clusters = np.unique(spike_clusters)
                     print('Clusters: ', len(clusters))
                     for clust in clusters:
-                        idx = np.where(spike_clusters==clust)[0]
+                        idx = np.where(spike_clusters == clust)[0]
                         spiketrain = SpikeTrain(times=spike_times[idx],
                                                 waveforms=spike_waveforms[idx],
                                                 electrode_indices=spike_electrode_indices[idx],
@@ -779,7 +813,7 @@ class Recording:
             filenames = [f for f in os.listdir(self.absolute_foldername)
                          if f.endswith('.spikes')]
             # order channels
-            idxs = [int(x.split('.')[1][x.split('.')[1].find('0n')+2:]) for x in filenames]
+            idxs = [int(x.split('.')[1][x.split('.')[1].find('0n') + 2:]) for x in filenames]
             filenames = list(np.array(filenames)[np.argsort(idxs)])
 
             if len(filenames) != 0:
@@ -797,15 +831,15 @@ class Recording:
                     if i_f == 0:
                         spike_clusters = np.max(data['sortedId'], axis=1).astype(int)
                         spike_times = data['timestamps']
-                        spike_electrode_indices = np.array([int(fname[fname.find('0n')+2]) + 1]
-                                                                       * len(spike_clusters))
+                        spike_electrode_indices = np.array([int(fname[fname.find('0n') + 2]) + 1]
+                                                           * len(spike_clusters))
                         spike_waveforms = data['spikes'].swapaxes(1, 2)
                     else:
                         spike_clusters = np.hstack((spike_clusters, np.max(data['sortedId'], axis=1).astype(int)))
                         spike_times = np.hstack((spike_times, data['timestamps']))
                         spike_electrode_indices = np.hstack((spike_electrode_indices,
-                                                                  np.array([int(fname[fname.find('0n')+2]) + 1]
-                                                                           * len(data['sortedId']))))
+                                                             np.array([int(fname[fname.find('0n') + 2]) + 1]
+                                                                      * len(data['sortedId']))))
                         spike_waveforms = np.vstack((spike_waveforms, data['spikes'].swapaxes(1, 2)))
 
                 clusters = np.unique(spike_clusters)
@@ -820,7 +854,6 @@ class Recording:
                                             cluster=clust,
                                             metadata=None)
                     self._spiketrains.append(spiketrain)
-
 
         self._spiketrains_dirty = False
 
@@ -843,12 +876,10 @@ class Recording:
             for sptr in self.spiketrains:
                 clip_spiketrains(sptr, clipping_times, start_end)
 
-
             self._times = clip_times(self._times, clipping_times, start_end)
             self._duration = self._times[-1] - self._times[0]
         else:
             print('Empty clipping times list.')
-
 
     def export_matlab(self, filename):
         from scipy import io as sio

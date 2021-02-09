@@ -17,7 +17,7 @@ MAX_NUMBER_OF_SPIKES = int(1e6)
 MAX_NUMBER_OF_RECORDS = int(1e6)
 MAX_NUMBER_OF_EVENTS = int(1e6)
 
-def loadContinuous(filepath, dtype=float):
+def loadContinuous(filepath, dtype=np.int16):
     assert dtype in (float, np.int16), \
         'Invalid data type specified for loadContinous, valid types are float and np.int16'
 

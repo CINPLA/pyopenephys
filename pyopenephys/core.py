@@ -649,7 +649,7 @@ class Recording:
 
     def _read_analog_signals(self):
         if self.experiment.acquisition_system is not None:
-            # fixed value in the open ephys system / bits-to-Volts A/D scale
+            # fixed value in the open ephys system
             gain = 0.195
             if self.format == 'binary':
                 # Check and decode files

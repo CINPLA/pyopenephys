@@ -15,7 +15,7 @@ import locale
 import struct
 import platform
 import xmltodict
-from distutils.version import StrictVersion
+from distutils.version import LooseVersion
 from pathlib import Path
 import warnings
 
@@ -344,7 +344,7 @@ class Recording:
             elif len(spikes_folders) > 1:
                 raise Exception("More than one spikes folder found!")
 
-            if StrictVersion(self.experiment.settings['INFO']['VERSION']) >= StrictVersion('0.4.4'):
+            if LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.4.4.0'):
                 oebin_files = [f for f in self.absolute_foldername.iterdir() if 'oebin' in f.name]
                 if len(oebin_files) == 1:
                     print("Reading oebin file")
@@ -364,7 +364,7 @@ class Recording:
         self._events_dirty = True
         self._message_dirty = True
 
-        self._times = []
+        self._times = None
         self._duration = []
         self._analog_signals = []
         self._tracking_signals = []
@@ -376,20 +376,19 @@ class Recording:
 
     @property
     def times(self):
-        if self.experiment.acquisition_system is not None:
-            if not self._analog_signals_dirty and self.nchan != 0:
+        if self._times is None:
+            if self.experiment.acquisition_system is not None:
                 self._times = self.analog_signals[0].times
-        if 'Sources/Tracking Port' in self.sig_chain.keys():
-            self._times = self.tracking[0].times
-        else:
-            self._times = []
+            elif len(self.tracking) > 0:
+                self._times = self.tracking[0].times
+            else:
+                self._times = None
 
         return self._times
 
     @property
     def duration(self):
         if self.experiment.acquisition_system is not None:
-            # if not self._analog_signals_dirty and self.nchan != 0:
             self._duration = self.analog_signals[0].times[-1] - self.analog_signals[0].times[0]
             return self._duration
         if 'Sources/Tracking Port' in self.sig_chain.keys():
@@ -418,7 +417,7 @@ class Recording:
     @property
     def start_time(self):
         if self.experiment.acquisition_system is not None:
-            start_times = np.array(self._processor_start_frames) / np.array(self._processor_sample_rates)
+            start_times = [anas.times[0] for anas in self.analog_signals]
             if len(start_times) == 1:
                 return start_times[0]
             else:
@@ -430,15 +429,21 @@ class Recording:
                                   "Returning start_time of first stream")
                     return start_times[0]
         else:
-            return self._software_start_frames / self._software_sample_rate
+            return self._software_start_frames / self._software_sample_rate * pq.s
 
     @property
     def software_sample_rate(self):
-        return self._software_sample_rate
+        if self._software_sample_rate is not None:
+            return self._software_sample_rate * pq.Hz
+        else:
+            return self._software_sample_rate
 
     @property
     def software_start_time(self):
-        return self._software_start_time
+        if self._software_start_time is not None:
+            return self._software_start_time * pq.s
+        else:
+            return self._software_start_time
 
     @property
     def spiketrains(self):
@@ -599,10 +604,8 @@ class Recording:
                             else:
                                 chan_states = None
 
-                            # TODO access right stream
                             ts_chans = ts_chans / self.sample_rate
                             ts_chans -= self.start_time
-
                             processor_folder_split = processor_folder.name.split("-")
 
                             if len(ts) > 0:
@@ -669,9 +672,6 @@ class Recording:
                 channels = data['channel'][idx_ev].astype(int)
                 channel_states = data['eventId'][idx_ev].astype(int)
                 channel_states[channel_states == 0] = -1
-                for proc, id in self.sig_chain.items():
-                    if int(id) == int(node):
-                        processor = proc
                 node_id = int(float(node))
                 full_words = None
                 metadata = None
@@ -682,7 +682,7 @@ class Recording:
                     channels=channels,
                     channel_states=channel_states,
                     full_words=full_words,
-                    processor=processor,
+                    processor=None,
                     node_id=node_id,
                     metadata=metadata
                 )
@@ -771,7 +771,7 @@ class Recording:
 
                                 self._analog_signals.append(AnalogSignal(
                                     channel_ids=range(anas.shape[0]),
-                                    channel_names= channel_names,
+                                    channel_names=channel_names,
                                     signal=anas,
                                     times=ts,
                                     gains=gains,
@@ -792,12 +792,11 @@ class Recording:
 
                         if any('.dat' in f for f in filenames):
                             datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
-                            print('.dat: ', datfile)
                             with open(op.join(processor_folder, datfile), "rb") as fh:
                                 anas, nsamples = read_analog_binary_signals(fh, self.nchan)
                             ts = np.load(op.join(processor_folder, 'timestamps.npy')) / self.sample_rate
                             if len(ts) != nsamples:
-                                print('Warning: timestamps and nsamples are different!')
+                                warnings.warn('timestamps and nsamples are different!')
                                 ts = np.arange(nsamples) / self.sample_rate
                             else:
                                 ts -= self.start_time
@@ -825,11 +824,9 @@ class Recording:
                 cont_files = list(np.array(cont_files)[np.argsort(idxs)])
 
                 if len(cont_files) != 0:
-                    print('Reading all channels')
                     anas = np.array([])
                     sample_rate = None
                     for i_f, f in enumerate(cont_files):
-                        print(f)
                         fullpath = f
                         sig = loadContinuous(str(fullpath))
                         block_len = int(sig['header']['blockLength'])
@@ -854,8 +851,9 @@ class Recording:
                                 t_end = timestamps[idx_end] + block_len
                                 anas_start = idx_start * block_len
                                 anas_end = (idx_end + 1) * block_len
-                                ts = np.arange(t_start, t_end) / sample_rate
+                                ts = np.arange(t_start, t_end) / sample_rate * pq.s
                                 anas = anas[:, anas_start:anas_end]
+
                     self._processor_sample_rates = [sample_rate]
                     self._analog_signals = [AnalogSignal(
                         channel_ids=range(anas.shape[0]),
@@ -896,7 +894,6 @@ class Recording:
                         spike_times = spike_times / self.sample_rate
                         spike_times -= self.start_time
                         clusters = np.unique(spike_clusters)
-                        print('Clusters: ', len(clusters))
                         for clust in clusters:
                             idx = np.where(spike_clusters == clust)[0]
                             spiketrain = SpikeTrain(times=spike_times[idx],
@@ -922,7 +919,6 @@ class Recording:
                     return
                 for i_f, fpath in enumerate(filenames):
                     fname = fpath.name
-                    print('Loading spikes from ', fname)
                     data = loadSpikes(str(fpath))
 
                     if i_f == 0:
@@ -940,7 +936,6 @@ class Recording:
                         spike_waveforms = np.vstack((spike_waveforms, data['spikes'].swapaxes(1, 2)))
 
                 clusters = np.unique(spike_clusters)
-                print('Clusters: ', len(clusters))
                 spike_times = spike_times / self.sample_rate
                 spike_times -= self.start_time
                 for clust in clusters:
@@ -955,26 +950,47 @@ class Recording:
         self._spiketrains_dirty = False
 
     def clip_recording(self, clipping_times, start_end='start'):
+        """
+        Clips recording, including analog signals, events, spike trains, and tracking
 
+        Parameters
+        ----------
+        clipping_times: float
+            Clipping times. It can have 1 or 2 elements. Assumed in seconds
+        start_end: str
+            'start' or 'end'. If len(clipping_times) is 1, whether to use it as start or end time.
+        """
+        if isinstance(clipping_times, pq.quantity.Quantity):
+            raise Exception("Please provide the 'clipping_times' in float (seconds)")
         if clipping_times is not None:
-            if clipping_times is not list:
-                if type(clipping_times[0]) is not pq.quantity.Quantity:
-                    print('clipping_times is not a quantity: seconds is used')
-                    clipping_times = clipping_times * pq.s
+            if not isinstance(clipping_times, (list, np.ndarray)):
+                clipping_times = [clipping_times]
 
-            clipping_times = [t.rescale(pq.s) for t in clipping_times]
+            clipping_times_pq = []
+            for clip in clipping_times:
+                if not isinstance(clip, pq.quantity.Quantity):
+                    clipping_times_pq.append(clip * pq.s)
+                else:
+                    clipping_times_pq.append(clip)
+            clipping_times_pq = [t.rescale(pq.s) for t in clipping_times_pq]
 
-            for anas in self.analog_signals:
-                clip_anas(anas, clipping_times, start_end)
-            for ev in self.events:
-                clip_events(ev, clipping_times, start_end)
-            for track in self.tracking:
-                clip_tracking(track, clipping_times, start_end)
-            for sptr in self.spiketrains:
-                clip_spiketrains(sptr, clipping_times, start_end)
+            if np.any([self.times[0] < clip_t < self.times[-1]] for clip_t in clipping_times_pq):
+                for clip_t in clipping_times_pq:
+                    print(self.times[0] < clip_t < self.times[-1])
+                times = self.times
+                for anas in self.analog_signals:
+                    clip_anas(anas, clipping_times_pq, start_end)
+                for ev in self.events:
+                    clip_events(ev, clipping_times_pq, start_end)
+                for track in self.tracking:
+                    clip_tracking(track, clipping_times_pq, start_end)
+                for sptr in self.spiketrains:
+                    clip_spiketrains(sptr, clipping_times_pq, start_end)
 
-            self._times = clip_times(self._times, clipping_times, start_end)
-            self._duration = self._times[-1] - self._times[0]
+                self._times = clip_times(times, clipping_times_pq, start_end)
+                self._duration = self._times[-1] - self._times[0]
+            else:
+                print("Clipping times are outside of timestamps range")
         else:
             print('Empty clipping times list.')
 

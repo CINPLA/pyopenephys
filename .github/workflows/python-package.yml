@@ -3,10 +3,11 @@ name: Python Package using Conda
 on: [push]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build_and_test:
+    name: Build & test Lamscript on ${{ matrix.os }}.
+    runs-on: ${{ matrix.os }}
     strategy:
-      max-parallel: 5
+      matrix:
 
     steps:
     - uses: actions/checkout@v2
@@ -20,7 +21,6 @@ jobs:
         echo $CONDA/bin >> $GITHUB_PATH
     - name: Install dependencies
       run: |
-        #conda env update --file environment.yml --name base
         conda install -c conda-forge datalad
         conda install -c conda-forge ruamel.yaml
         conda install pip

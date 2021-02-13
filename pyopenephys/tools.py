@@ -1,11 +1,6 @@
-from __future__ import division
-from __future__ import print_function
-from __future__ import with_statement
-
 import quantities as pq
 import os
 import numpy as np
-import json
 
 
 def clip_anas(analog_signals, clipping_times, start_end='start'):
@@ -23,6 +18,7 @@ def clip_anas(analog_signals, clipping_times, start_end='start'):
 
     """
     if len(analog_signals.signal) != 0:
+        print(analog_signals.times)
         times = analog_signals.times.rescale(pq.s)
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))

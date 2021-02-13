@@ -18,6 +18,7 @@ import xmltodict
 from distutils.version import LooseVersion
 from pathlib import Path
 import warnings
+import json
 
 from .tools import *
 from .openephys_tools import *
@@ -365,6 +366,7 @@ class Recording:
         self._message_dirty = True
 
         self._times = None
+        self._start_times = []
         self._duration = []
         self._analog_signals = []
         self._tracking_signals = []
@@ -417,17 +419,19 @@ class Recording:
     @property
     def start_time(self):
         if self.experiment.acquisition_system is not None:
-            start_times = [anas.times[0] for anas in self.analog_signals]
-            if len(start_times) == 1:
-                return start_times[0]
+            if len(self._start_times) == 0:
+                self._read_analog_signals()
+            if len(self._start_times) == 1:
+                return self._start_times[0]
             else:
-                if np.all([np.isclose(start_times[0], stime) for stime in start_times[1:]]):
-                    return start_times[0]
+                if np.all([np.isclose(self._start_times[0].magnitude, stime.magnitude)
+                           for stime in self._start_times[1:]]):
+                    return self._start_times[0]
                 else:
                     warnings.warn("Multiple streams with different start times found. To access the sample rate for each "
                                   "stream use the 'start_time' field of the AnalogSignal object."
                                   "Returning start_time of first stream")
-                    return start_times[0]
+                    return self._start_times[0]
         else:
             return self._software_start_frames / self._software_sample_rate * pq.s
 
@@ -756,11 +760,12 @@ class Recording:
                                 with datfile.open("rb") as fh:
                                     anas, nsamples = read_analog_binary_signals(fh, nchan)
                                 ts = np.load(data_folder / 'timestamps.npy') / sample_rate
+                                self._start_times.append(ts[0] * pq.s)
                                 if len(ts) != nsamples:
                                     warnings.warn('timestamps and nsamples are different!')
                                     ts = np.arange(nsamples) / sample_rate
                                 else:
-                                    ts -= self.start_time
+                                    ts -= ts[0]
 
                                 # retrieve channel ids and gain
                                 channel_names = []
@@ -769,6 +774,7 @@ class Recording:
                                     channel_names.append(ch["channel_name"])
                                     gains.append(ch["bit_volts"])
 
+                                ts = ts * pq.s
                                 self._analog_signals.append(AnalogSignal(
                                     channel_ids=range(anas.shape[0]),
                                     channel_names=channel_names,
@@ -795,14 +801,16 @@ class Recording:
                             with open(op.join(processor_folder, datfile), "rb") as fh:
                                 anas, nsamples = read_analog_binary_signals(fh, self.nchan)
                             ts = np.load(op.join(processor_folder, 'timestamps.npy')) / self.sample_rate
+                            self._start_times.append(ts[0] * pq.s)
                             if len(ts) != nsamples:
                                 warnings.warn('timestamps and nsamples are different!')
-                                ts = np.arange(nsamples) / self.sample_rate
+                                ts = np.arange(nsamples) / self.sample_rate.magnitude
                             else:
-                                ts -= self.start_time
+                                ts -= ts[0]
                         else:
                             raise ValueError("'continuous.dat' should be in the folder")
 
+                        ts = ts * pq.s
                         self._analog_signals.append(AnalogSignal(
                             channel_ids=range(anas.shape[0]),
                             signal=anas,
@@ -823,7 +831,7 @@ class Recording:
                 idxs = [int(x.name[x.name.find('CH') + 2: x.name.find('.')]) for x in cont_files]
                 cont_files = list(np.array(cont_files)[np.argsort(idxs)])
 
-                if len(cont_files) != 0:
+                if len(cont_files) > 0:
                     anas = np.array([])
                     sample_rate = None
                     for i_f, f in enumerate(cont_files):
@@ -852,6 +860,8 @@ class Recording:
                                 anas_start = idx_start * block_len
                                 anas_end = (idx_end + 1) * block_len
                                 ts = np.arange(t_start, t_end) / sample_rate * pq.s
+                                self._start_times.append(ts[0])
+                                ts -= ts[0]
                                 anas = anas[:, anas_start:anas_end]
 
                     self._processor_sample_rates = [sample_rate]

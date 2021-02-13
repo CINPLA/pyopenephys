@@ -30,48 +30,63 @@ class TestPyopenephysConversions(unittest.TestCase):
 
     @parameterized.expand([
         (
+        True,
         "openephys/OpenEphys_SampleData_1",
-        dict(foldername=Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_1")
+        Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_1"
         ),
         (
+        True,
         "openephys/OpenEphys_SampleData_2_(multiple_starts)",
-        dict(foldername=Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_2_(multiple_starts)")
+        Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_2_(multiple_starts)"
         ),
         (
+        True,
         "openephys/OpenEphys_SampleData_3",
-        dict(foldername=Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_1")
-        )
+        Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_1"
+        ),
+        # (
+        # False,
+        # None,
+        # Path("/Users/abuccino/Documents/Data/catalyst/open_ephys_neuropixels_example/Record_Node_107")
+        # )
+
     ])
-    def test_open_file(self, dataset_path, file_kwargs):
-        print(f"Testing {dataset_path}")
-        self.dataset.get(dataset_path)
+    def test_open_file(self, download, dataset_path, foldername):
+        if download:
+            print(f"Testing GIN {dataset_path}")
+            self.dataset.get(dataset_path)
+        else:
+            print(f"Testing local {foldername}")
 
-        file = pyopenephys.File(**file_kwargs)
-        print("Instantiated File object")
-        experiments = file.experiments
-        print(f"\nN experiments: {len(experiments)}")
-        for e, exp in enumerate(experiments):
-            print(f"\nExperiment {e}")
-            recordings = exp.recordings
-            print(f"N recordings: {len(recordings)}")
+        if foldername.is_dir():
+            file = pyopenephys.File(foldername)
+            print("Instantiated File object")
+            experiments = file.experiments
+            print(f"\nN experiments: {len(experiments)}")
+            for e, exp in enumerate(experiments):
+                print(f"\nExperiment {e}")
+                recordings = exp.recordings
+                print(f"N recordings: {len(recordings)}")
 
-            for r, rec in enumerate(recordings):
-                print(f"\nRecording {r} - duration {rec.duration} - acquisition {rec.experiment.acquisition_system}")
-                analog = rec.analog_signals
-                signal_shapes = [an.signal.shape for an in analog]
-                print(f"N analog signals: {len(analog)} - shapes: {signal_shapes}")
-                events = rec.events
-                print(f"N event signals: {len(events)}")
-                spiketrains = rec.spiketrains
-                print(f"N spiketrains: {len(spiketrains)}")
+                for r, rec in enumerate(recordings):
+                    print(f"\nRecording {r} - duration {rec.duration} - acquisition {rec.experiment.acquisition_system}")
+                    analog = rec.analog_signals
+                    signal_shapes = [an.signal.shape for an in analog]
+                    print(f"N analog signals: {len(analog)} - shapes: {signal_shapes}")
+                    events = rec.events
+                    print(f"N event signals: {len(events)}")
+                    spiketrains = rec.spiketrains
+                    print(f"N spiketrains: {len(spiketrains)}")
 
-                # test clipping
-                print(f"Test clipping")
-                start_time = rec.start_time.magnitude
-                clip_times = start_time + 0.2
-                rec.clip_recording(clip_times)
-                clip_times = [start_time + 0.3, start_time + 0.5]
-                rec.clip_recording(clip_times)
+                    # test clipping
+                    print(f"Test clipping")
+                    duration = rec.duration
+                    clip_times = 0.2
+                    rec.clip_recording(clip_times)
+                    clip_times = [0.3, 0.8]
+                    rec.clip_recording(clip_times)
+        else:
+            print(f"{foldername} not found!")
 
 
 if __name__ == '__main__':

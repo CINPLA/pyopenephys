@@ -1,3 +1,3 @@
 from .core import File
 
-__version__ = "1.0.7"
+from .version import version as __version__

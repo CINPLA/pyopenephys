@@ -147,6 +147,8 @@ def loadSpikes(filepath):
     data['sortedId'] = sortedId[:currentSpike]
     data['electrodeId'] = electrodeId[:currentSpike]
 
+    f.close()
+
     return data
 
 
@@ -191,6 +193,8 @@ def loadEvents(filepath):
     data['eventId'] = eventId[:index]
     data['recordingNumber'] = recordingNumber[:index]
     data['sampleNum'] = sampleNum[:index]
+
+    f.close()
 
     return data
 

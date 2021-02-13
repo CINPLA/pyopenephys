@@ -4,14 +4,12 @@ on: [push]
 
 jobs:
   build-linux:
+    runs-on: ubuntu-latest
     strategy:
-      matrix:
-        platform: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.platform }}
+      max-parallel: 5
 
     steps:
     - uses: actions/checkout@v2
-    - uses: conda-incubator/setup-miniconda@v2
     - name: Set up Python 3.8
       uses: actions/setup-python@v2
       with:

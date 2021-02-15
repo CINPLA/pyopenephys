@@ -819,6 +819,7 @@ class Recording:
                         ))
 
             elif self.format == 'openephys':
+                fixed_gain = 0.195
                 # Find continuous CH data
                 if self.experiment.id == 1:
                     cont_files = [f for f in self.absolute_foldername.iterdir() if 'continuous' in f.name and
@@ -869,7 +870,7 @@ class Recording:
                         channel_ids=range(anas.shape[0]),
                         signal=anas,
                         times=ts,
-                        gains=self.experiment._channel_info["gain"].values(),
+                        gains=np.ones(anas.shape[0]) * fixed_gain,
                     )]
         else:
             self._analog_signals = [AnalogSignal(

@@ -17,9 +17,9 @@ MAX_NUMBER_OF_SPIKES = int(1e6)
 MAX_NUMBER_OF_RECORDS = int(1e6)
 MAX_NUMBER_OF_EVENTS = int(1e6)
 
-def loadContinuous(filepath, dtype=float):
-    assert dtype in (float, np.int16), \
-        'Invalid data type specified for loadContinous, valid types are float and np.int16'
+def loadContinuous(filepath, dtype='int16'):  
+    assert dtype in ('float', 'int16'), \
+        'Invalid data type specified for loadContinous, valid types are float and int16'
 
     # print("Loading continuous data...")
 
@@ -58,9 +58,8 @@ def loadContinuous(filepath, dtype=float):
 
         recordingNumbers[recordNumber] = (np.fromfile(f, np.dtype('>u2'), 1))  # big-endian 16-bit unsigned integer
 
-        if dtype == float:  # Convert data to float array and convert bits to voltage.
-            data = np.fromfile(f, np.dtype('>i2'), N) * float(
-                header['bitVolts'])  # big-endian 16-bit signed integer, multiplied by bitVolts
+        if dtype == 'float':  # Convert data to float array and convert bits to voltage.
+            data = np.fromfile(f, np.dtype('>i2'), N) * float(header['bitVolts'])  # big-endian 16-bit signed integer, multiplied by bitVolts
         else:  # Keep data in signed 16 bit integer format.
             data = np.fromfile(f, np.dtype('>i2'), N)  # big-endian 16-bit signed integer
         samples[indices[recordNumber]:indices[recordNumber + 1]] = data
@@ -148,6 +147,8 @@ def loadSpikes(filepath):
     data['sortedId'] = sortedId[:currentSpike]
     data['electrodeId'] = electrodeId[:currentSpike]
 
+    f.close()
+
     return data
 
 
@@ -192,6 +193,8 @@ def loadEvents(filepath):
     data['eventId'] = eventId[:index]
     data['recordingNumber'] = recordingNumber[:index]
     data['sampleNum'] = sampleNum[:index]
+
+    f.close()
 
     return data
 

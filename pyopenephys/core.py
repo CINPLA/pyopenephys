@@ -786,6 +786,7 @@ class Recording:
                             else:
                                 raise ValueError("'continuous.dat' should be in the folder")
                     else:
+                        fixed_gain = 0.195
                         processor_folders = [f for f in self._continuous_folder.iterdir() if f.is_dir()]
                         if len(processor_folders) > 1:
                             for c in processor_folders:
@@ -815,7 +816,8 @@ class Recording:
                             channel_ids=range(anas.shape[0]),
                             signal=anas,
                             times=ts,
-                            gains=self.experiment._channel_info["gain"].values(),
+                            sample_rate=self.sample_rate.magnitude,
+                            gains=np.ones(anas.shape[0]) * fixed_gain
                         ))
 
             elif self.format == 'openephys':
@@ -870,6 +872,7 @@ class Recording:
                         channel_ids=range(anas.shape[0]),
                         signal=anas,
                         times=ts,
+                        sample_rate=self.sample_rate.magnitude,
                         gains=np.ones(anas.shape[0]) * fixed_gain,
                     )]
         else:

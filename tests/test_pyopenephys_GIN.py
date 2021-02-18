@@ -71,7 +71,10 @@ class TestPyopenephysConversions(unittest.TestCase):
                 for r, rec in enumerate(recordings):
                     print(f"\nRecording {r} - duration {rec.duration} - acquisition {rec.experiment.acquisition_system}")
                     analog = rec.analog_signals
+                    gains = [an.gains for an in analog]
                     signal_shapes = [an.signal.shape for an in analog]
+                    for g, shape in zip(gains, signal_shapes):
+                        assert len(g) == shape[0]
                     print(f"N analog signals: {len(analog)} - shapes: {signal_shapes}")
                     events = rec.events
                     print(f"N event signals: {len(events)}")

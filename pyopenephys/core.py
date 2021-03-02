@@ -374,6 +374,9 @@ class Recording:
         self._messages = []
         self._spiketrains = []
 
+        self._software_start_frame = None
+        self._software_sample_rate = None
+
         self.__dict__.update(self._read_sync_message())
 
     @property
@@ -433,21 +436,21 @@ class Recording:
                                   "Returning start_time of first stream")
                     return self._start_times[0]
         else:
-            return self._software_start_frames / self._software_sample_rate * pq.s
+            return self._software_start_frame / self._software_sample_rate * pq.s
 
     @property
     def software_sample_rate(self):
         if self._software_sample_rate is not None:
             return self._software_sample_rate * pq.Hz
         else:
-            return self._software_sample_rate
+            return None
 
     @property
     def software_start_time(self):
-        if self._software_start_time is not None:
-            return self._software_start_time * pq.s
+        if self._software_start_frame is not None:
+            return self._software_start_frame / self._software_sample_rate * pq.s
         else:
-            return self._software_start_time
+            return None
 
     @property
     def spiketrains(self):
@@ -639,14 +642,12 @@ class Recording:
                             metadata = None
 
                         if self.software_sample_rate is not None:
-                            sample_rate = self.software_sample_rate * pq.Hz
-                            start_time = self.software_start_time
+                            sample_rate = self.software_sample_rate
                         else:
                             sample_rate = self.sample_rate
-                            start_time = self.start_time
 
-                        ts_chans = ts_chans / sample_rate
-                        ts_chans -= start_time
+                        ts = ts / sample_rate
+                        ts -= self.start_time
 
                         processor_folder_split = processor_folder.name.split("-")
 
@@ -700,24 +701,22 @@ class Recording:
             if self.format == 'binary':
                 # Check and decode files
                 if self._events_folder is not None:
-                    tracking_folder = [f for f in self._events_folder.iterdir() if 'Tracking_Port' in f][0]
+                    tracking_folder = [f for f in self._events_folder.iterdir() if 'Tracking_Port' in f.name][0]
                     binary_groups = [f for f in tracking_folder.iterdir()]
                     for bg in binary_groups:
-                        data_array = np.load(op.join(tracking_folder, bg, 'data_array.npy'))
-                        ts = np.load(op.join(tracking_folder, bg, 'timestamps.npy'))
-                        channels = np.load(op.join(tracking_folder, bg, 'channels.npy'))
-                        metadata = np.load(op.join(tracking_folder, bg, 'metadata.npy'))
+                        data_array = np.load(bg / 'data_array.npy')
+                        ts = np.load(bg / 'timestamps.npy')
+                        channels = np.load(bg / 'channels.npy')
+                        metadata = np.load(bg / 'metadata.npy')
                         data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
                         if self.software_sample_rate is not None:
-                            sample_rate = self.software_sample_rate * pq.Hz
-                            start_time = self.software_start_time
+                            sample_rate = self.software_sample_rate
                         else:
                             sample_rate = self.sample_rate
-                            start_time = self.start_time
 
                         ts = ts / sample_rate
-                        ts -= start_time
+                        ts -= self.start_time
 
                         if len(ts) > 0:
                             x, y, w, h = data_array[:, 0], data_array[:, 1], data_array[:, 2], data_array[:, 3]
@@ -889,7 +888,8 @@ class Recording:
         if self.format == 'binary':
             # Check and decode files
             if self._spikes_folder is not None:
-                processor_folders = [f for f in self._spikes_folder if f.is_dir() and not f.name.startswith('.')]
+                processor_folders = [f for f in self._spikes_folder.iterdir() if f.is_dir() and
+                                     not f.name.startswith('.')]
 
                 for processor_folder in processor_folders:
                     spike_groups = [f for f in processor_folder.iterdir() if not f.name.startswith('.')]
@@ -989,8 +989,6 @@ class Recording:
             clipping_times_pq = [t.rescale(pq.s) for t in clipping_times_pq]
 
             if np.any([self.times[0] < clip_t < self.times[-1]] for clip_t in clipping_times_pq):
-                for clip_t in clipping_times_pq:
-                    print(self.times[0] < clip_t < self.times[-1])
                 times = self.times
                 for anas in self.analog_signals:
                     clip_anas(anas, clipping_times_pq, start_end)

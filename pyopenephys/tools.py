@@ -18,7 +18,6 @@ def clip_anas(analog_signals, clipping_times, start_end='start'):
 
     """
     if len(analog_signals.signal) != 0:
-        print(analog_signals.times)
         times = analog_signals.times.rescale(pq.s)
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))

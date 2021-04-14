@@ -445,7 +445,7 @@ class Recording:
     @property
     def software_start_time(self):
         if self._software_start_frame is not None:
-            return self._software_start_frame / self._software_sample_rate * pq.s
+            return self._software_start_frame / self.software_sample_rate
         else:
             return None
 

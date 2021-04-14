@@ -444,10 +444,10 @@ class Recording:
 
     @property
     def software_start_time(self):
-        if self._software_start_time is not None:
-            return self._software_start_time * pq.s
+        if self._software_start_frame is not None:
+            return self._software_start_frame / self._software_sample_rate * pq.s
         else:
-            return self._software_start_time
+            return None
 
     @property
     def spiketrains(self):
@@ -700,7 +700,7 @@ class Recording:
             if self.format == 'binary':
                 # Check and decode files
                 if self._events_folder is not None:
-                    tracking_folder = [f for f in self._events_folder.iterdir() if 'Tracking_Port' in f][0]
+                    tracking_folder = [f for f in self._events_folder.iterdir() if 'Tracking_Port' in f.name][0]
                     binary_groups = [f for f in tracking_folder.iterdir()]
                     for bg in binary_groups:
                         data_array = np.load(op.join(tracking_folder, bg, 'data_array.npy'))
@@ -889,7 +889,8 @@ class Recording:
         if self.format == 'binary':
             # Check and decode files
             if self._spikes_folder is not None:
-                processor_folders = [f for f in self._spikes_folder if f.is_dir() and not f.name.startswith('.')]
+                processor_folders = [f for f in self._spikes_folder.iterdir() if f.is_dir()
+                                     and not f.name.startswith('.')]
 
                 for processor_folder in processor_folders:
                     spike_groups = [f for f in processor_folder.iterdir() if not f.name.startswith('.')]

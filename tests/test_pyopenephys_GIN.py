@@ -44,12 +44,16 @@ class TestPyopenephysConversions(unittest.TestCase):
         "openephys/OpenEphys_SampleData_3",
         Path.cwd() / "ephy_testing_data" / "openephys" / "OpenEphys_SampleData_1"
         ),
-        # (
-        # False,
-        # None,
-        # Path("/Users/abuccino/Documents/Data/catalyst/open_ephys_neuropixels_example/Record_Node_107")
-        # )
-
+        (
+        True,
+        "openephysbinary/v0.4.4.1_with_video_tracking",
+        Path.cwd() / "ephy_testing_data" / "openephysbinary" / "v0.4.4.1_with_video_tracking"
+        ),
+        (
+        True,
+        "openephysbinary/v0.5.3_two_neuropixels_stream/Record_Node_107",
+        Path.cwd() / "ephy_testing_data" / "openephysbinary" / "v0.5.3_two_neuropixels_stream"/ "Record_Node_107"
+        ),
     ])
     def test_open_file(self, download, dataset_path, foldername):
         if download:
@@ -80,6 +84,8 @@ class TestPyopenephysConversions(unittest.TestCase):
                     print(f"N event signals: {len(events)}")
                     spiketrains = rec.spiketrains
                     print(f"N spiketrains: {len(spiketrains)}")
+                    tracking = rec.tracking
+                    print(f"N tracking: {len(tracking)}")
 
                     # test clipping
                     print(f"Test clipping")

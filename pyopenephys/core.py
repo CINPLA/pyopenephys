@@ -639,7 +639,7 @@ class Recording:
                             metadata = None
 
                         if self.software_sample_rate is not None:
-                            sample_rate = self.software_sample_rate * pq.Hz
+                            sample_rate = self.software_sample_rate 
                             start_time = self.software_start_time
                         else:
                             sample_rate = self.sample_rate
@@ -710,7 +710,7 @@ class Recording:
                         data_array = np.array([struct.unpack('4f', d) for d in data_array])
 
                         if self.software_sample_rate is not None:
-                            sample_rate = self.software_sample_rate * pq.Hz
+                            sample_rate = self.software_sample_rate
                             start_time = self.software_start_time
                         else:
                             sample_rate = self.sample_rate

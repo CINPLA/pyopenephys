@@ -504,6 +504,7 @@ class Recording:
         with sync_messagefile.open("r") as fh:
             info['_processor_sample_rates'] = []
             info['_processor_start_frames'] = []
+            info['messages'] = []
             info['_software_sample_rate'] = None
             info['_software_start_frame'] = None
             while True:

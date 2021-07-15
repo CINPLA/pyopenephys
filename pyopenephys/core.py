@@ -19,6 +19,7 @@ from distutils.version import LooseVersion
 from pathlib import Path
 import warnings
 import json
+from natsort import natsorted
 
 from .tools import *
 from .openephys_tools import *
@@ -200,9 +201,9 @@ class Experiment:
         elif self.file.format == 'binary':
             self._path = op.dirname(path)
             self._read_settings(id)
-            recording_names = [f for f in os.listdir(self._absolute_foldername)
-                               if os.path.isdir(op.join(self._absolute_foldername, f))
-                               and 'recording' in f]
+            recording_names = natsorted([f for f in os.listdir(self._absolute_foldername)
+                                         if os.path.isdir(op.join(self._absolute_foldername, f))
+                                         and 'recording' in f]
 
             rec_ids = [int(rec[-1]) for rec in recording_names]
             for (rel_path, id) in zip(recording_names, rec_ids):

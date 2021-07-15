@@ -26,6 +26,7 @@ setup(
         'pyyaml',
         'quantities',
         'xmltodict',
+        'natsort'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

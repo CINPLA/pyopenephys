@@ -789,6 +789,7 @@ class Recording:
                     else:
                         fixed_gain = 0.195
                         processor_folders = [f for f in self._continuous_folder.iterdir() if f.is_dir()]
+                        sample_rate = self.sample_rate.magnitude
                         if len(processor_folders) > 1:
                             for c in processor_folders:
                                 # only get source continuous processors
@@ -802,7 +803,7 @@ class Recording:
                             datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
                             with open(op.join(processor_folder, datfile), "rb") as fh:
                                 anas, nsamples = read_analog_binary_signals(fh, self.nchan)
-                            ts = np.load(op.join(processor_folder, 'timestamps.npy')) / self.sample_rate
+                            ts = np.load(op.join(processor_folder, 'timestamps.npy')) / sample_rate
                             self._start_times.append(ts[0] * pq.s)
                             if len(ts) != nsamples:
                                 warnings.warn('timestamps and nsamples are different!')

@@ -568,7 +568,8 @@ class Recording:
                     message = {'time': int(spl[0]),
                                'message': ' '.join(spl[1:])}
                     info['messages'].append(message)
-            info['_software_sample_rate'] = max(info['_processor_sample_rates'])
+            if not is_v4:
+                info['_software_sample_rate'] = max(info['_processor_sample_rates'])
 
         return info
 

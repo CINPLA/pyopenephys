@@ -25,6 +25,12 @@ from .tools import *
 from .openephys_tools import *
 
 
+# For settings.xml files prior to 0.4.x, the sampling rate was an enumeration of these options
+_enumerated_sample_rates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4 / 3,
+                            4000, 5000, 6250, 8000, 10000, 12500, 15000,
+                            20000, 25000, 30000)
+
+
 class AnalogSignal:
     def __init__(self, channel_ids, signal, times, gains, channel_names=None, sample_rate=None):
         self.signal = signal
@@ -249,6 +255,7 @@ class Experiment:
             with open(self._set_fname) as f:
                 xmldata = f.read()
                 self.settings = xmltodict.parse(xmldata)['SETTINGS']
+            is_v4 = LooseVersion(self.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
             # read date in US format
             if platform.system() == 'Windows':
                 locale.setlocale(locale.LC_ALL, 'english')
@@ -274,7 +281,13 @@ class Experiment:
                     processor_iter = [sigchain['PROCESSOR']]
                 for processor in processor_iter:
                     self.sig_chain.update({processor['@name']: processor['@NodeId']})
-                    if 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1':
+                    if is_v4:
+                        is_source = 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1'
+                        is_source_alt = 'CHANNEL' in processor.keys() and processor['@isSource'] == '1'
+                    else:
+                        is_source = 'CHANNEL_INFO' in processor.keys() and 'Source' in processor['@name']
+                        is_source_alt = 'CHANNEL' in processor.keys() and 'Source' in processor['@name']
+                    if is_source:
                         # recorder
                         self.acquisition_system = processor['@name'].split('/')[-1]
                         self._channel_info['gain'] = {}
@@ -288,7 +301,7 @@ class Experiment:
                                 self.nchan += 1
                                 chnum = chan['@number']
                                 self._channel_info['gain'][chnum] = gain[chnum]
-                    elif 'CHANNEL' in processor.keys() and processor['@isSource'] == '1':
+                    elif is_source_alt:
                         # recorder
                         self._ephys = True
                         self.acquisition_system = processor['@name'].split('/')[-1]
@@ -301,9 +314,14 @@ class Experiment:
                                 self._channel_info['gain'][chnum] = 1
 
             # Check openephys format
-            if self.settings['CONTROLPANEL']['@recordEngine'] == 'OPENEPHYS':
+            if is_v4:
+                recorder = self.settings['CONTROLPANEL']['@recordEngine']
+            else:
+                recorder_idx = int(self.settings['CONTROLPANEL']['@recordEngine']) - 1
+                recorder = self.settings['RECORDENGINES']['ENGINE'][recorder_idx]['@id']
+            if recorder == 'OPENEPHYS':
                 self.format = 'openephys'
-            elif self.settings['CONTROLPANEL']['@recordEngine'] == 'RAWBINARY':
+            elif recorder == 'RAWBINARY':
                 self.format = 'binary'
             else:
                 self.format = None
@@ -505,6 +523,7 @@ class Recording:
             else:
                 sync_messagefile = self.absolute_foldername / f'messages_{self.experiment.id}.events'
 
+        is_v4 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
         with sync_messagefile.open("r") as fh:
             info['_processor_sample_rates'] = []
             info['_processor_start_frames'] = []
@@ -512,28 +531,45 @@ class Recording:
             info['_software_sample_rate'] = None
             info['_software_start_frame'] = None
             while True:
-                spl = fh.readline().split()
+                spl = [s.strip('\x00') for s in fh.readline().split()]
                 if not spl:
                     break
                 if 'Software' in spl:
                     self.processor = False
-                    stime = spl[-1].split('@')
-                    hz_start = stime[-1].find('Hz')
-                    sr = float(stime[-1][:hz_start])
-                    info['_software_sample_rate'] = sr
-                    info['_software_start_frame'] = int(stime[0])
+                    if is_v4:
+                        stime = spl[-1].split('@')
+                        hz_start = stime[-1].find('Hz')
+                        sr = float(stime[-1][:hz_start])
+                        info['_software_sample_rate'] = sr
+                        info['_software_start_frame'] = int(stime[0])
+                    else:
+                        # There's no apparent encoding of a distinct software sampling rate,
+                        # so assume it is the maximum processor rate (set later)
+                        info['_software_start_frame'] = int(spl[0])
                 elif 'Processor:' in spl:
                     self.processor = True
-                    stime = spl[-1].split('@')
-                    hz_start = stime[-1].find('Hz')
-                    stimes.append(float(stime[-1][:hz_start]))
-                    sr = float(stime[-1][:hz_start])
-                    info['_processor_sample_rates'].append(sr)
-                    info['_processor_start_frames'].append(int(stime[0]))
+                    if is_v4:
+                        stime = spl[-1].split('@')
+                        hz_start = stime[-1].find('Hz')
+                        stimes.append(float(stime[-1][:hz_start]))
+                        sr = float(stime[-1][:hz_start])
+                        info['_processor_sample_rates'].append(sr)
+                        info['_processor_start_frames'].append(int(stime[0]))
+                    else:
+                        proc_id = spl[2]
+                        for proc in self.experiment.settings['SIGNALCHAIN']['PROCESSOR']:
+                            if proc['@NodeId'] != proc_id:
+                                continue
+                            encoded_rate = proc['EDITOR']['@SampleRate']
+                            sr = float(_enumerated_sample_rates[int(encoded_rate) - 1])
+                            info['_processor_sample_rates'].append(sr)
+                            info['_processor_start_frames'].append(int(spl[-1]))
                 else:
                     message = {'time': int(spl[0]),
                                'message': ' '.join(spl[1:])}
                     info['messages'].append(message)
+            if not is_v4:
+                info['_software_sample_rate'] = max(info['_processor_sample_rates'])
 
         return info
 

@@ -820,6 +820,8 @@ class Recording:
                                     gains=gains,
                                     sample_rate=sample_rate
                                 ))
+                            elif: len(datfiles) > 1:
+                                raise ValueError("Multiple '.dat' files in folder, expected 1")
                             else:
                                 raise ValueError("'continuous.dat' should be in the folder")
                     else:

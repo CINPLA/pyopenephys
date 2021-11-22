@@ -159,6 +159,17 @@ class File:
             self._experiments = []
             for (rel_path, id) in zip(experiments_names, exp_ids):
                 self._experiments.append(Experiment(op.join(self._absolute_foldername, rel_path), id, self))
+        elif list(Path(self._absolute_foldername).rglob('structure.oebin')):
+            # 'binary' format could also be detected with the existence of `structure.oebin` and `continuous` folder under recordings
+            oebin_files = list(Path(self._absolute_foldername).rglob('structure.oebin'))
+            assert np.all([(oebin_file.parent / 'continuous').exists() for oebin_file in oebin_files])
+
+            self.format = 'binary'
+            experiments_names = sorted(set([oebin_file.parent.parent.name for oebin_file in oebin_files]))
+            exp_ids = [int(exp[-1]) if exp.startswith('experiment') else exp_idx for exp_idx, exp in enumerate(experiments_names)]
+            self._experiments = []
+            for (rel_path, id) in zip(experiments_names, exp_ids):
+                self._experiments.append(Experiment(op.join(self._absolute_foldername, rel_path), id, self))
         else:
             raise Exception("Only 'binary' and 'openephys' format are supported by pyopenephys")
 
@@ -205,8 +216,12 @@ class Experiment:
                 self._recordings.append(Recording(self._absolute_foldername, int(self.id), self))
 
         elif self.file.format == 'binary':
-            self._path = op.dirname(path)
-            self._read_settings(id)
+            if (Path(path) / 'settings.xml').exists():
+                self._path = path
+                self._read_settings(1)
+            else:
+                self._path = op.dirname(path)
+                self._read_settings(id)
             recording_names = natsorted([f for f in os.listdir(self._absolute_foldername)
                                          if os.path.isdir(op.join(self._absolute_foldername, f))
                                          and 'recording' in f])

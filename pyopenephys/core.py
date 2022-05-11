@@ -340,7 +340,7 @@ class Experiment:
                 recorder = self.settings['RECORDENGINES']['ENGINE'][recorder_idx]['@id']
             if recorder == 'OPENEPHYS':
                 self.format = 'openephys'
-            elif recorder == 'RAWBINARY':
+            elif recorder in ('BINARY', 'RAWBINARY'):
                 self.format = 'binary'
             else:
                 self.format = None

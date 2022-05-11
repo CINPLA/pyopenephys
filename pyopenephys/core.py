@@ -295,7 +295,11 @@ class Experiment:
                 else:
                     processor_iter = [sigchain['PROCESSOR']]
                 for processor in processor_iter:
-                    self.sig_chain.update({processor['@name']: processor['@NodeId']})
+                    processor_node_id = processor.get("@nodeId", processor.get("@NodeId"))
+                    if processor_node_id is None:
+                        raise KeyError('Neither "@nodeId" nor "@NodeId" key found')
+
+                    self.sig_chain.update({processor['@name']: processor_node_id})
                     if is_v4:
                         is_source = 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1'
                         is_source_alt = 'CHANNEL' in processor.keys() and processor['@isSource'] == '1'

@@ -20,6 +20,7 @@ from pathlib import Path
 import warnings
 import json
 from natsort import natsorted
+import re
 
 from .tools import *
 from .openephys_tools import *
@@ -543,14 +544,17 @@ class Recording:
                 sync_messagefile = self.absolute_foldername / f'messages_{self.experiment.id}.events'
 
         is_v4 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
+        is_v6 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.6.0')
         with sync_messagefile.open("r") as fh:
+            info['_processor_names'] = []
             info['_processor_sample_rates'] = []
             info['_processor_start_frames'] = []
             info['messages'] = []
             info['_software_sample_rate'] = None
             info['_software_start_frame'] = None
             while True:
-                spl = [s.strip('\x00') for s in fh.readline().split()]
+                sync_msg_line = fh.readline()
+                spl = [s.strip('\x00') for s in sync_msg_line.split()]
                 if not spl:
                     break
                 if 'Software' in spl:
@@ -583,6 +587,13 @@ class Recording:
                             sr = float(_enumerated_sample_rates[int(encoded_rate) - 1])
                             info['_processor_sample_rates'].append(sr)
                             info['_processor_start_frames'].append(int(spl[-1]))
+                elif sync_msg_line.startswith('Start Time for') and is_v6:
+                    self.processor = True
+                    match = re.match('Start Time for (.*) @ (\d+) Hz: (\d+)', sync_msg_line)
+                    p_name, sr, stime = match.groups()
+                    info['_processor_names'].append(p_name)
+                    info['_processor_sample_rates'].append(float(sr))
+                    info['_processor_start_frames'].append(int(stime))
                 else:
                     message = {'time': int(spl[0]),
                                'message': ' '.join(spl[1:])}
@@ -596,7 +607,8 @@ class Recording:
         if self.format == 'binary':
             if self._events_folder is not None:
                 message_folder = [f for f in self._events_folder.iterdir() if 'Message_Center' in f.name][0]
-                text_groups = [f for f in message_folder.iterdir()]
+                text_groups = [f.parent for f in Path(message_folder).rglob('*text.npy')]
+                
                 if self.format == 'binary':
                     for tg in text_groups:
                         text = np.load(tg / 'text.npy')

@@ -272,6 +272,7 @@ class Experiment:
                 xmldata = f.read()
                 self.settings = xmltodict.parse(xmldata)['SETTINGS']
             is_v4 = LooseVersion(self.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
+            is_v6 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.6.0')
             # read date in US format
             if platform.system() == 'Windows':
                 locale.setlocale(locale.LC_ALL, 'english')
@@ -301,6 +302,14 @@ class Experiment:
                         raise KeyError('Neither "@nodeId" nor "@NodeId" key found')
 
                     self.sig_chain.update({processor['@name']: processor_node_id})
+
+                    if is_v6 and 'Neuropix-PXI' in processor['@name']:
+                        # No explicit "is_source" or "is_sink" in v0.6.0+
+                        # no "CHANNELS" details, thus the "gain" has to be inferred elsewhere
+                        self.acquisition_system = processor['@name'].split('/')[-1]
+                        self._channel_info['gain'] = {}
+                        continue
+
                     if is_v4:
                         is_source = 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1'
                         is_source_alt = 'CHANNEL' in processor.keys() and processor['@isSource'] == '1'

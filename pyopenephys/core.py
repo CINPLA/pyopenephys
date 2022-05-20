@@ -272,7 +272,7 @@ class Experiment:
                 xmldata = f.read()
                 self.settings = xmltodict.parse(xmldata)['SETTINGS']
             is_v4 = LooseVersion(self.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
-            is_v6 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.6.0')
+            is_v6 = LooseVersion(self.settings['INFO']['VERSION']) >= LooseVersion('0.6.0')
             # read date in US format
             if platform.system() == 'Windows':
                 locale.setlocale(locale.LC_ALL, 'english')

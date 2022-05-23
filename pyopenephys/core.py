@@ -20,6 +20,7 @@ from pathlib import Path
 import warnings
 import json
 from natsort import natsorted
+import re
 
 from .tools import *
 from .openephys_tools import *
@@ -159,6 +160,17 @@ class File:
             self._experiments = []
             for (rel_path, id) in zip(experiments_names, exp_ids):
                 self._experiments.append(Experiment(op.join(self._absolute_foldername, rel_path), id, self))
+        elif list(Path(self._absolute_foldername).rglob('structure.oebin')):
+            # 'binary' format could also be detected with the existence of `structure.oebin` and `continuous` folder under recordings
+            oebin_files = list(Path(self._absolute_foldername).rglob('structure.oebin'))
+            assert np.all([(oebin_file.parent / 'continuous').exists() for oebin_file in oebin_files])
+
+            self.format = 'binary'
+            experiments_names = sorted(set([oebin_file.parent.parent.name for oebin_file in oebin_files]))
+            exp_ids = [int(exp[-1]) if exp.startswith('experiment') else exp_idx for exp_idx, exp in enumerate(experiments_names)]
+            self._experiments = []
+            for (rel_path, id) in zip(experiments_names, exp_ids):
+                self._experiments.append(Experiment(op.join(self._absolute_foldername, rel_path), id, self))
         else:
             raise Exception("Only 'binary' and 'openephys' format are supported by pyopenephys")
 
@@ -205,8 +217,12 @@ class Experiment:
                 self._recordings.append(Recording(self._absolute_foldername, int(self.id), self))
 
         elif self.file.format == 'binary':
-            self._path = op.dirname(path)
-            self._read_settings(id)
+            if (Path(path) / 'settings.xml').exists():
+                self._path = path
+                self._read_settings(1)
+            else:
+                self._path = op.dirname(path)
+                self._read_settings(id)
             recording_names = natsorted([f for f in os.listdir(self._absolute_foldername)
                                          if os.path.isdir(op.join(self._absolute_foldername, f))
                                          and 'recording' in f])
@@ -256,6 +272,7 @@ class Experiment:
                 xmldata = f.read()
                 self.settings = xmltodict.parse(xmldata)['SETTINGS']
             is_v4 = LooseVersion(self.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
+            is_v6 = LooseVersion(self.settings['INFO']['VERSION']) >= LooseVersion('0.6.0')
             # read date in US format
             if platform.system() == 'Windows':
                 locale.setlocale(locale.LC_ALL, 'english')
@@ -280,7 +297,19 @@ class Experiment:
                 else:
                     processor_iter = [sigchain['PROCESSOR']]
                 for processor in processor_iter:
-                    self.sig_chain.update({processor['@name']: processor['@NodeId']})
+                    processor_node_id = processor.get("@nodeId", processor.get("@NodeId"))
+                    if processor_node_id is None:
+                        raise KeyError('Neither "@nodeId" nor "@NodeId" key found')
+
+                    self.sig_chain.update({processor['@name']: processor_node_id})
+
+                    if is_v6 and 'Neuropix-PXI' in processor['@name']:
+                        # No explicit "is_source" or "is_sink" in v0.6.0+
+                        # no "CHANNELS" details, thus the "gain" has to be inferred elsewhere
+                        self.acquisition_system = processor['@name'].split('/')[-1]
+                        self._channel_info['gain'] = {}
+                        continue
+
                     if is_v4:
                         is_source = 'CHANNEL_INFO' in processor.keys() and processor['@isSource'] == '1'
                         is_source_alt = 'CHANNEL' in processor.keys() and processor['@isSource'] == '1'
@@ -321,7 +350,7 @@ class Experiment:
                 recorder = self.settings['RECORDENGINES']['ENGINE'][recorder_idx]['@id']
             if recorder == 'OPENEPHYS':
                 self.format = 'openephys'
-            elif recorder == 'RAWBINARY':
+            elif recorder in ('BINARY', 'RAWBINARY'):
                 self.format = 'binary'
             else:
                 self.format = None
@@ -524,14 +553,17 @@ class Recording:
                 sync_messagefile = self.absolute_foldername / f'messages_{self.experiment.id}.events'
 
         is_v4 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.4.0.0')
+        is_v6 = LooseVersion(self.experiment.settings['INFO']['VERSION']) >= LooseVersion('0.6.0')
         with sync_messagefile.open("r") as fh:
+            info['_processor_names'] = []
             info['_processor_sample_rates'] = []
             info['_processor_start_frames'] = []
             info['messages'] = []
             info['_software_sample_rate'] = None
             info['_software_start_frame'] = None
             while True:
-                spl = [s.strip('\x00') for s in fh.readline().split()]
+                sync_msg_line = fh.readline()
+                spl = [s.strip('\x00') for s in sync_msg_line.split()]
                 if not spl:
                     break
                 if 'Software' in spl:
@@ -564,6 +596,13 @@ class Recording:
                             sr = float(_enumerated_sample_rates[int(encoded_rate) - 1])
                             info['_processor_sample_rates'].append(sr)
                             info['_processor_start_frames'].append(int(spl[-1]))
+                elif sync_msg_line.startswith('Start Time for') and is_v6:
+                    self.processor = True
+                    match = re.match('Start Time for (.*) @ (\d+) Hz: (\d+)', sync_msg_line)
+                    p_name, sr, stime = match.groups()
+                    info['_processor_names'].append(p_name)
+                    info['_processor_sample_rates'].append(float(sr))
+                    info['_processor_start_frames'].append(int(stime))
                 else:
                     message = {'time': int(spl[0]),
                                'message': ' '.join(spl[1:])}
@@ -577,7 +616,8 @@ class Recording:
         if self.format == 'binary':
             if self._events_folder is not None:
                 message_folder = [f for f in self._events_folder.iterdir() if 'Message_Center' in f.name][0]
-                text_groups = [f for f in message_folder.iterdir()]
+                text_groups = [f.parent for f in Path(message_folder).rglob('*text.npy')]
+                
                 if self.format == 'binary':
                     for tg in text_groups:
                         text = np.load(tg / 'text.npy')

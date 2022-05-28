@@ -545,7 +545,12 @@ class Recording:
         stimes = []
 
         if self.format == 'binary':
-            sync_messagefile = [f for f in self.absolute_foldername.iterdir() if 'sync_messages' in f.name][0]
+            sync_messagefile = [f for f in self.absolute_foldername.iterdir() if 'sync_messages' in f.name]
+            if sync_messagefile:
+                sync_messagefile = sync_messagefile[0]
+            else:
+                warnings.warn(f'No "sync_messages" file found for binary format in {self.absolute_foldername}')
+                return info
         elif self.format == 'openephys':
             if self.experiment.id == 1:
                 sync_messagefile = self.absolute_foldername / 'messages.events'

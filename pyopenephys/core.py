@@ -839,7 +839,7 @@ class Recording:
                                 ts = _load_timestamps(data_folder / 'timestamps.npy', sample_rate)
                                 self._start_times.append(ts[0] * pq.s)
                                 if len(ts) != nsamples:
-                                    warnings.warn('timestamps and nsamples are different!')
+                                    warnings.warn('timestamps and nsamples are different ({})!'.format(data_folder))
                                     ts = np.arange(nsamples) / sample_rate
                                 else:
                                     ts -= ts[0]

@@ -626,10 +626,8 @@ class Recording:
                 if self.format == 'binary':
                     for tg in text_groups:
                         text = np.load(tg / 'text.npy')
-                        ts = np.load(tg / 'timestamps.npy')
                         channels = np.load(tg / 'channels.npy')
-
-                        ts = ts / self.sample_rate
+                        ts = _load_timestamps(tg / 'timestamps.npy', self.sample_rate)
                         ts -= self.start_time
 
                         if len(text) > 0:
@@ -670,7 +668,7 @@ class Recording:
                     TTL_groups = [f for f in processor_folder.iterdir() if 'TTL' in f.name]
                     for ttl in TTL_groups:
                         full_words = np.load(ttl / 'full_words.npy')
-                        ts = np.load(ttl / 'timestamps.npy')
+                        ts = _load_timestamps(ttl / 'timestamps.npy', self.sample_rate)
                         channels = np.load(ttl / 'channels.npy').astype(int)
                         unique_channels = np.unique(channels)
                         channel_states = np.load(ttl / 'channel_states.npy')
@@ -694,7 +692,6 @@ class Recording:
                             else:
                                 chan_states = None
 
-                            ts_chans = ts_chans / self.sample_rate
                             ts_chans -= self.start_time
                             processor_folder_split = processor_folder.name.split("-")
 
@@ -714,7 +711,6 @@ class Recording:
                     binary_groups = [f for f in processor_folder.iterdir() if 'binary' in f.name]
                     for bg in binary_groups:
                         full_words = np.load(bg / 'full_words.npy')
-                        ts = np.load(bg / 'timestamps.npy')
                         channels = np.load(bg / 'channels.npy').astype(int)
                         channel_states = np.load(bg / 'channel_states.npy')
                         channel_states = channel_states / np.max(channel_states).astype(int)
@@ -729,7 +725,7 @@ class Recording:
                         else:
                             sample_rate = self.sample_rate
 
-                        ts = ts / sample_rate
+                        ts = _load_timestamps(bg / 'timestamps.npy', sample_rate)
                         ts -= self.start_time
 
                         processor_folder_split = processor_folder.name.split("-")
@@ -788,7 +784,6 @@ class Recording:
                     binary_groups = [f for f in tracking_folder.iterdir()]
                     for bg in binary_groups:
                         data_array = np.load(bg / 'data_array.npy')
-                        ts = np.load(bg / 'timestamps.npy')
                         channels = np.load(bg / 'channels.npy')
                         metadata = np.load(bg / 'metadata.npy')
                         data_array = np.array([struct.unpack('4f', d) for d in data_array])
@@ -798,7 +793,7 @@ class Recording:
                         else:
                             sample_rate = self.sample_rate
 
-                        ts = ts / sample_rate
+                        ts = _load_timestamps(bg / 'timestamps.npy', sample_rate)
                         ts -= self.start_time
 
                         if len(ts) > 0:
@@ -841,7 +836,7 @@ class Recording:
                                 datfile = datfiles[0]
                                 with datfile.open("rb") as fh:
                                     anas, nsamples = read_analog_binary_signals(fh, nchan)
-                                ts = np.load(data_folder / 'timestamps.npy') / sample_rate
+                                ts = _load_timestamps(data_folder / 'timestamps.npy', sample_rate)
                                 self._start_times.append(ts[0] * pq.s)
                                 if len(ts) != nsamples:
                                     warnings.warn('timestamps and nsamples are different!')
@@ -886,7 +881,7 @@ class Recording:
                             datfile = [f for f in filenames if '.dat' in f and 'continuous' in f][0]
                             with open(op.join(processor_folder, datfile), "rb") as fh:
                                 anas, nsamples = read_analog_binary_signals(fh, self.nchan)
-                            ts = np.load(op.join(processor_folder, 'timestamps.npy')) / sample_rate
+                            ts = _load_timestamps(processor_folder / 'timestamps.npy', sample_rate)
                             self._start_times.append(ts[0] * pq.s)
                             if len(ts) != nsamples:
                                 warnings.warn('timestamps and nsamples are different!')
@@ -1105,3 +1100,23 @@ class Recording:
             dict_to_save.update({'events': np.array([ev.times for ev in self.events])})
 
         sio.savemat(filename, dict_to_save)
+
+
+def _load_timestamps(ts_npy_file, sample_rate):
+    """
+    Load timestamps.npy file
+    Detect whether timestamps.npy is in sample or second
+    Returns timestamps in second (apply sample_rate if needed)
+    """
+    ts = np.load(ts_npy_file)
+
+    if isinstance(ts.dtype, int):
+        return ts / sample_rate
+
+    period = np.median(np.diff(ts))
+    if period == 1:
+        return ts / sample_rate
+
+    fs = 1/period
+    assert np.isclose(sample_rate, fs, rtol=1e-4), f'Significant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})'
+    return ts

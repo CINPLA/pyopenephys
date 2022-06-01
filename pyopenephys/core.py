@@ -1118,5 +1118,5 @@ def _load_timestamps(ts_npy_file, sample_rate):
         return ts / sample_rate
 
     fs = 1/period
-    assert np.isclose(sample_rate, fs, rtol=1e-4), f'Significant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})'
+    assert np.isclose(sample_rate, fs, rtol=3e-4), f'Error loading timestamps ({ts_npy_file})\nSignificant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})'
     return ts

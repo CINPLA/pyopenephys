@@ -1110,7 +1110,7 @@ def _load_timestamps(ts_npy_file, sample_rate):
     """
     ts = np.load(ts_npy_file)
 
-    if isinstance(ts.dtype, int):
+    if ts.dtype == np.int32 or ts.dtype == np.int64:
         return ts / sample_rate
 
     period = np.median(np.diff(ts))

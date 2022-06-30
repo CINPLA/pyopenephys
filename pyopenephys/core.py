@@ -258,14 +258,16 @@ class Experiment:
                          if fname.startswith('settings') and fname.endswith('.xml') and str(id) in fname]
 
         if not len(set_fname) == 1:
-            # raise IOError('Unique settings file not found')
-            print("settings.xml not found. Can't load signal chain information")
-            self._set_fname = None
-            self.sig_chain = None
-            self.setting = None
-            self.format = None
-            self.nchan = None
-            self._start_datetime = datetime(1970, 1, 1)
+            if self.file.format == 'binary':
+                raise IOError(f'Unique settings file not found in {self._path}')
+            else:
+                print("settings.xml not found. Can't load signal chain information")
+                self._set_fname = None
+                self.sig_chain = None
+                self.setting = None
+                self.format = None
+                self.nchan = None
+                self._start_datetime = datetime(1970, 1, 1)
         else:
             self._set_fname = op.join(self._path, set_fname[0])
             with open(self._set_fname) as f:

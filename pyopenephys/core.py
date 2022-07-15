@@ -400,7 +400,7 @@ class Recording:
                     with oebin_files[0].open('r') as f:
                         self._oebin = json.load(f)
                 elif len(oebin_files) == 0:
-                    raise FileNotFoundError("'structre.oebin' file not found! Impossible to retrieve configuration "
+                    raise FileNotFoundError(f"'structure.oebin' file not found in ({self.absolute_foldername})! Impossible to retrieve configuration "
                                             "information")
                 else:
                     raise Exception("Multiple oebin files found. Impossible to retrieve configuration information")
@@ -1113,7 +1113,12 @@ def _load_timestamps(ts_npy_file, sample_rate):
     if ts.dtype == np.int32 or ts.dtype == np.int64:
         return ts / sample_rate
 
-    period = np.median(np.diff(ts))
+    ts_diff = np.diff(ts)
+    if any(ts_diff <= 0):
+        warnings.warn('Loaded timestamps ({}) not monotonically increasing - constructing timestamps from sample rate instead!'.format(ts_npy_file))
+        return np.arange(len(ts)) / sample_rate
+
+    period = np.median(ts_diff)
     if period == 1:
         return ts / sample_rate
 

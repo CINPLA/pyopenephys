@@ -258,14 +258,16 @@ class Experiment:
                          if fname.startswith('settings') and fname.endswith('.xml') and str(id) in fname]
 
         if not len(set_fname) == 1:
-            # raise IOError('Unique settings file not found')
-            print("settings.xml not found. Can't load signal chain information")
-            self._set_fname = None
-            self.sig_chain = None
-            self.setting = None
-            self.format = None
-            self.nchan = None
-            self._start_datetime = datetime(1970, 1, 1)
+            if self.file.format == 'binary':
+                raise IOError(f'Unique settings file not found in {self._path}')
+            else:
+                print("settings.xml not found. Can't load signal chain information")
+                self._set_fname = None
+                self.sig_chain = None
+                self.setting = None
+                self.format = None
+                self.nchan = None
+                self._start_datetime = datetime(1970, 1, 1)
         else:
             self._set_fname = op.join(self._path, set_fname[0])
             with open(self._set_fname) as f:
@@ -400,7 +402,7 @@ class Recording:
                     with oebin_files[0].open('r') as f:
                         self._oebin = json.load(f)
                 elif len(oebin_files) == 0:
-                    raise FileNotFoundError("'structre.oebin' file not found! Impossible to retrieve configuration "
+                    raise FileNotFoundError(f"'structure.oebin' file not found in ({self.absolute_foldername})! Impossible to retrieve configuration "
                                             "information")
                 else:
                     raise Exception("Multiple oebin files found. Impossible to retrieve configuration information")
@@ -1113,7 +1115,12 @@ def _load_timestamps(ts_npy_file, sample_rate):
     if ts.dtype == np.int32 or ts.dtype == np.int64:
         return ts / sample_rate
 
-    period = np.median(np.diff(ts))
+    ts_diff = np.diff(ts)
+    if any(ts_diff <= 0):
+        warnings.warn('Loaded timestamps ({}) not monotonically increasing - constructing timestamps from sample rate instead!'.format(ts_npy_file))
+        return np.arange(len(ts)) / sample_rate
+
+    period = np.median(ts_diff)
     if period == 1:
         return ts / sample_rate
 

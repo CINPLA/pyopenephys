@@ -832,7 +832,7 @@ class Recording:
                             data_folder = self._continuous_folder / cont["folder_name"]
                             nchan = cont["num_channels"]
                             sample_rate = cont["sample_rate"]
-                            datfiles = [f for f in data_folder.iterdir() if f.suffix == '.dat']
+                            datfiles = [f for f in data_folder.iterdir() if f.name == 'continuous.dat']
 
                             if len(datfiles) == 1:
                                 datfile = datfiles[0]

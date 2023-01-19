@@ -163,7 +163,8 @@ class File:
         elif list(Path(self._absolute_foldername).rglob('structure.oebin')):
             # 'binary' format could also be detected with the existence of `structure.oebin` and `continuous` folder under recordings
             oebin_files = list(Path(self._absolute_foldername).rglob('structure.oebin'))
-            assert np.all([(oebin_file.parent / 'continuous').exists() for oebin_file in oebin_files])
+            if not np.all([(oebin_file.parent / 'continuous').exists() for oebin_file in oebin_files]):
+                raise FileNotFoundError(f"Could not find paired 'continuous' file for each oebin in {oebin_file.parent}")
 
             self.format = 'binary'
             experiments_names = sorted(set([oebin_file.parent.parent.name for oebin_file in oebin_files]))
@@ -1125,5 +1126,6 @@ def _load_timestamps(ts_npy_file, sample_rate):
         return ts / sample_rate
 
     fs = 1/period
-    assert np.isclose(sample_rate, fs, rtol=3e-4), f'Error loading timestamps ({ts_npy_file})\nSignificant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})'
+    if not np.isclose(sample_rate, fs, rtol=3e-4):
+        warnings.warn(f'Error loading timestamps ({ts_npy_file})\nSignificant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})')
     return ts

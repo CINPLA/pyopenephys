@@ -1127,5 +1127,5 @@ def _load_timestamps(ts_npy_file, sample_rate):
 
     fs = 1/period
     if not np.isclose(sample_rate, fs, rtol=3e-4):
-        warnings.warn(f'Error loading timestamps ({ts_npy_file})\nSignificant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})')
+        raise ValueError(f'Error loading timestamps ({ts_npy_file})\nSignificant discrepancy found in the provided sample rate ({sample_rate}) and that computed from the data ({fs})')
     return ts

@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/CINPLA/pyopenephys.svg?branch=master)](https://travis-ci.org/CINPLA/pyopenephys)
+[![Build Status](https://github.com/CINPLA/pyopenephys/actions/workflows/python-package.yml/badge.svg)](https://github.com/CINPLA/pyopenephys/actions/workflows/python-package.yml/badge.svg)
 [![Project Status: Active - The project has reached a stable, usable state and is being actively developed.](http://www.repostatus.org/badges/latest/active.svg)](http://www.repostatus.org/#active)
 
 # pyopenephys

@@ -1,6 +1,6 @@
-'''
+"""
 This code was adapted from OpenEphys.py (https://github.com/open-ephys/analysis-tools/blob/master/Python3/OpenEphys.py)
-'''
+"""
 
 import os
 import numpy as np
@@ -17,16 +17,16 @@ MAX_NUMBER_OF_SPIKES = int(1e6)
 MAX_NUMBER_OF_RECORDS = int(1e6)
 MAX_NUMBER_OF_EVENTS = int(1e6)
 
-def loadContinuous(filepath, dtype='int16'):  
-    assert dtype in ('float', 'int16'), \
-        'Invalid data type specified for loadContinous, valid types are float and int16'
+
+def loadContinuous(filepath, dtype="int16"):
+    assert dtype in ("float", "int16"), "Invalid data type specified for loadContinous, valid types are float and int16"
 
     # print("Loading continuous data...")
 
     ch = {}
 
     # read in the data
-    f = open(filepath, 'rb')
+    f = open(filepath, "rb")
 
     fileLength = os.fstat(f.fileno()).st_size
 
@@ -47,53 +47,54 @@ def loadContinuous(filepath, dtype='int16'):
     recIndices = np.arange(0, nrec)
 
     for recordNumber in recIndices:
-
-        timestamps[recordNumber] = np.fromfile(f, np.dtype('<i8'), 1)  # little-endian 64-bit signed integer
-        N = np.fromfile(f, np.dtype('<u2'), 1)[0]  # little-endian 16-bit unsigned integer
+        timestamps[recordNumber] = np.fromfile(f, np.dtype("<i8"), 1)  # little-endian 64-bit signed integer
+        N = np.fromfile(f, np.dtype("<u2"), 1)[0]  # little-endian 16-bit unsigned integer
 
         # print index
 
         if N != SAMPLES_PER_RECORD:
-            raise Exception('Found corrupted record in block ' + str(recordNumber))
+            raise Exception("Found corrupted record in block " + str(recordNumber))
 
-        recordingNumbers[recordNumber] = (np.fromfile(f, np.dtype('>u2'), 1))  # big-endian 16-bit unsigned integer
+        recordingNumbers[recordNumber] = np.fromfile(f, np.dtype(">u2"), 1)  # big-endian 16-bit unsigned integer
 
-        if dtype == 'float':  # Convert data to float array and convert bits to voltage.
-            data = np.fromfile(f, np.dtype('>i2'), N) * float(header['bitVolts'])  # big-endian 16-bit signed integer, multiplied by bitVolts
+        if dtype == "float":  # Convert data to float array and convert bits to voltage.
+            data = np.fromfile(f, np.dtype(">i2"), N) * float(
+                header["bitVolts"]
+            )  # big-endian 16-bit signed integer, multiplied by bitVolts
         else:  # Keep data in signed 16 bit integer format.
-            data = np.fromfile(f, np.dtype('>i2'), N)  # big-endian 16-bit signed integer
-        samples[indices[recordNumber]:indices[recordNumber + 1]] = data
+            data = np.fromfile(f, np.dtype(">i2"), N)  # big-endian 16-bit signed integer
+        samples[indices[recordNumber] : indices[recordNumber + 1]] = data
 
         marker = f.read(10)  # dump
 
     # print recordNumber
     # print index
 
-    ch['header'] = header
-    ch['timestamps'] = timestamps
-    ch['data'] = samples  # OR use downsample(samples,1), to save space
-    ch['recordingNumber'] = recordingNumbers
+    ch["header"] = header
+    ch["timestamps"] = timestamps
+    ch["data"] = samples  # OR use downsample(samples,1), to save space
+    ch["recordingNumber"] = recordingNumbers
     f.close()
     return ch
 
 
 def loadSpikes(filepath):
-    '''
+    """
     Loads spike waveforms and timestamps from filepath (should be .spikes file)
-    '''
+    """
 
     data = {}
 
     # print('loading spikes...')
 
-    f = open(filepath, 'rb')
+    f = open(filepath, "rb")
     header = readHeader(f)
 
-    if float(header[' version']) < 0.4:
-        raise Exception('Loader is only compatible with .spikes files with version 0.4 or higher')
+    if float(header[" version"]) < 0.4:
+        raise Exception("Loader is only compatible with .spikes files with version 0.4 or higher")
 
-    data['header'] = header
-    numChannels = int(header['num_channels'])
+    data["header"] = header
+    numChannels = int(header["num_channels"])
     numSamples = 40  # **NOT CURRENTLY WRITTEN TO HEADER**
 
     spikes = np.zeros((MAX_NUMBER_OF_SPIKES, numSamples, numChannels))
@@ -108,23 +109,23 @@ def loadSpikes(filepath):
     currentSpike = 0
 
     while f.tell() < os.fstat(f.fileno()).st_size:
-        eventType = np.fromfile(f, np.dtype('<u1'), 1)  # always equal to 4, discard
-        timestamps[currentSpike] = np.fromfile(f, np.dtype('<i8'), 1)
-        software_timestamp = np.fromfile(f, np.dtype('<i8'), 1)
-        source[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
-        numChannels = int(np.fromfile(f, np.dtype('<u2'), 1))
-        numSamples = int(np.fromfile(f, np.dtype('<u2'), 1))
-        sortedId[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
-        electrodeId[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
-        channel = np.fromfile(f, np.dtype('<u2'), 1)
-        color = np.fromfile(f, np.dtype('<u1'), 3)
+        eventType = np.fromfile(f, np.dtype("<u1"), 1)  # always equal to 4, discard
+        timestamps[currentSpike] = np.fromfile(f, np.dtype("<i8"), 1)
+        software_timestamp = np.fromfile(f, np.dtype("<i8"), 1)
+        source[currentSpike] = np.fromfile(f, np.dtype("<u2"), 1)
+        numChannels = int(np.fromfile(f, np.dtype("<u2"), 1))
+        numSamples = int(np.fromfile(f, np.dtype("<u2"), 1))
+        sortedId[currentSpike] = np.fromfile(f, np.dtype("<u2"), 1)
+        electrodeId[currentSpike] = np.fromfile(f, np.dtype("<u2"), 1)
+        channel = np.fromfile(f, np.dtype("<u2"), 1)
+        color = np.fromfile(f, np.dtype("<u1"), 3)
         pcProj = np.fromfile(f, np.float32, 2)
-        sampleFreq = np.fromfile(f, np.dtype('<u2'), 1)
+        sampleFreq = np.fromfile(f, np.dtype("<u2"), 1)
 
-        waveforms = np.fromfile(f, np.dtype('<u2'), numChannels * numSamples)
+        waveforms = np.fromfile(f, np.dtype("<u2"), numChannels * numSamples)
         gain[currentSpike, :] = np.fromfile(f, np.float32, numChannels)
-        thresh[currentSpike, :] = np.fromfile(f, np.dtype('<u2'), numChannels)
-        recNum[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
+        thresh[currentSpike, :] = np.fromfile(f, np.dtype("<u2"), numChannels)
+        recNum[currentSpike] = np.fromfile(f, np.dtype("<u2"), 1)
 
         waveforms_reshaped = np.reshape(waveforms, (numChannels, numSamples))
         waveforms_reshaped = waveforms_reshaped.astype(float)
@@ -138,14 +139,14 @@ def loadSpikes(filepath):
 
         currentSpike += 1
 
-    data['spikes'] = spikes[:currentSpike, :, :]
-    data['timestamps'] = timestamps[:currentSpike]
-    data['source'] = source[:currentSpike]
-    data['gain'] = gain[:currentSpike, :]
-    data['thresh'] = thresh[:currentSpike, :]
-    data['recordingNumber'] = recNum[:currentSpike]
-    data['sortedId'] = sortedId[:currentSpike]
-    data['electrodeId'] = electrodeId[:currentSpike]
+    data["spikes"] = spikes[:currentSpike, :, :]
+    data["timestamps"] = timestamps[:currentSpike]
+    data["source"] = source[:currentSpike]
+    data["gain"] = gain[:currentSpike, :]
+    data["thresh"] = thresh[:currentSpike, :]
+    data["recordingNumber"] = recNum[:currentSpike]
+    data["sortedId"] = sortedId[:currentSpike]
+    data["electrodeId"] = electrodeId[:currentSpike]
 
     f.close()
 
@@ -157,13 +158,13 @@ def loadEvents(filepath):
 
     # print('loading events...')
 
-    f = open(filepath, 'rb')
+    f = open(filepath, "rb")
     header = readHeader(f)
 
-    if float(header[' version']) < 0.4:
-        raise Exception('Loader is only compatible with .events files with version 0.4 or higher')
+    if float(header[" version"]) < 0.4:
+        raise Exception("Loader is only compatible with .events files with version 0.4 or higher")
 
-    data['header'] = header
+    data["header"] = header
 
     index = -1
 
@@ -178,21 +179,21 @@ def loadEvents(filepath):
     while f.tell() < os.fstat(f.fileno()).st_size:
         index += 1
 
-        timestamps[index] = np.fromfile(f, np.dtype('<i8'), 1)
-        sampleNum[index] = np.fromfile(f, np.dtype('<i2'), 1)
-        eventType[index] = np.fromfile(f, np.dtype('<u1'), 1)
-        nodeId[index] = np.fromfile(f, np.dtype('<u1'), 1)
-        eventId[index] = np.fromfile(f, np.dtype('<u1'), 1)
-        channel[index] = np.fromfile(f, np.dtype('<u1'), 1)
-        recordingNumber[index] = np.fromfile(f, np.dtype('<u2'), 1)
+        timestamps[index] = np.fromfile(f, np.dtype("<i8"), 1)
+        sampleNum[index] = np.fromfile(f, np.dtype("<i2"), 1)
+        eventType[index] = np.fromfile(f, np.dtype("<u1"), 1)
+        nodeId[index] = np.fromfile(f, np.dtype("<u1"), 1)
+        eventId[index] = np.fromfile(f, np.dtype("<u1"), 1)
+        channel[index] = np.fromfile(f, np.dtype("<u1"), 1)
+        recordingNumber[index] = np.fromfile(f, np.dtype("<u2"), 1)
 
-    data['channel'] = channel[:index]
-    data['timestamps'] = timestamps[:index]
-    data['eventType'] = eventType[:index]
-    data['nodeId'] = nodeId[:index]
-    data['eventId'] = eventId[:index]
-    data['recordingNumber'] = recordingNumber[:index]
-    data['sampleNum'] = sampleNum[:index]
+    data["channel"] = channel[:index]
+    data["timestamps"] = timestamps[:index]
+    data["eventType"] = eventType[:index]
+    data["nodeId"] = nodeId[:index]
+    data["eventId"] = eventId[:index]
+    data["recordingNumber"] = recordingNumber[:index]
+    data["sampleNum"] = sampleNum[:index]
 
     f.close()
 
@@ -201,8 +202,8 @@ def loadEvents(filepath):
 
 def readHeader(f):
     header = {}
-    h = f.read(1024).decode().replace('\n', '').replace('header.', '')
-    for i, item in enumerate(h.split(';')):
-        if '=' in item:
-            header[item.split(' = ')[0]] = item.split(' = ')[1]
+    h = f.read(1024).decode().replace("\n", "").replace("header.", "")
+    for i, item in enumerate(h.split(";")):
+        if "=" in item:
+            header[item.split(" = ")[0]] = item.split(" = ")[1]
     return header

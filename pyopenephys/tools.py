@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 
-def clip_anas(analog_signals, clipping_times, start_end='start'):
+def clip_anas(analog_signals, clipping_times, start_end="start"):
     """
     Clips analog signals
 
@@ -22,12 +22,12 @@ def clip_anas(analog_signals, clipping_times, start_end='start'):
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) == 1:
-            if start_end == 'start':
+            if start_end == "start":
                 idx = np.where(times > clipping_times[0])
-            elif start_end == 'end':
+            elif start_end == "end":
                 idx = np.where(times < clipping_times[0])
         else:
-            raise AttributeError('clipping_times must be of length 1 or 2')
+            raise AttributeError("clipping_times must be of length 1 or 2")
 
         if len(analog_signals.signal.shape) == 2:
             analog_signals.signal = analog_signals.signal[:, idx[0]]
@@ -54,12 +54,12 @@ def clip_events(events, clipping_times, start_end):
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) == 1:
-            if start_end == 'start':
+            if start_end == "start":
                 idx = np.where(times > clipping_times[0])
-            elif start_end == 'end':
+            elif start_end == "end":
                 idx = np.where(times < clipping_times[0])
         else:
-            raise AttributeError('clipping_times must be of length 1 or 2')
+            raise AttributeError("clipping_times must be of length 1 or 2")
 
         events.times = times[idx]
         events.channel_states = events.channel_states[idx]
@@ -88,12 +88,12 @@ def clip_tracking(tracking, clipping_times, start_end):
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) == 1:
-            if start_end == 'start':
+            if start_end == "start":
                 idx = np.where(times > clipping_times[0])
-            elif start_end == 'end':
+            elif start_end == "end":
                 idx = np.where(times < clipping_times[0])
         else:
-            raise AttributeError('clipping_times must be of length 1 or 2')
+            raise AttributeError("clipping_times must be of length 1 or 2")
 
         tracking.times = times[idx]
         tracking.x = tracking.x[idx]
@@ -123,12 +123,12 @@ def clip_spiketrains(sptr, clipping_times, start_end):
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) == 1:
-            if start_end == 'start':
+            if start_end == "start":
                 idx = np.where(times > clipping_times[0])
-            elif start_end == 'end':
+            elif start_end == "end":
                 idx = np.where(times < clipping_times[0])
         else:
-            raise AttributeError('clipping_times must be of length 1 or 2')
+            raise AttributeError("clipping_times must be of length 1 or 2")
 
         sptr.times = times[idx]
         sptr.waveforms = sptr.waveforms[idx]
@@ -137,7 +137,7 @@ def clip_spiketrains(sptr, clipping_times, start_end):
             sptr.metadata = sptr.metadata[idx]
 
 
-def clip_times(times, clipping_times, start_end='start'):
+def clip_times(times, clipping_times, start_end="start"):
     """
     Clips timestamps
 
@@ -155,23 +155,21 @@ def clip_times(times, clipping_times, start_end='start'):
     if len(clipping_times) == 2:
         idx = np.where((times > clipping_times[0]) & (times <= clipping_times[1]))
     elif len(clipping_times) == 1:
-        if start_end == 'start':
+        if start_end == "start":
             idx = np.where(times >= clipping_times[0])
-        elif start_end == 'end':
+        elif start_end == "end":
             idx = np.where(times <= clipping_times[0])
     else:
-        raise AttributeError('clipping_times must be of length 1 or 2')
+        raise AttributeError("clipping_times must be of length 1 or 2")
     times_clip = times[idx]
 
     return times_clip
 
 
 def read_analog_binary_signals(filehandle, numchan):
-    numchan=int(numchan)
-    nsamples = os.fstat(filehandle.fileno()).st_size // (numchan*2)
-    samples = np.memmap(filehandle, np.dtype('i2'), mode='r',
-                        shape=(nsamples, numchan))
+    numchan = int(numchan)
+    nsamples = os.fstat(filehandle.fileno()).st_size // (numchan * 2)
+    samples = np.memmap(filehandle, np.dtype("i2"), mode="r", shape=(nsamples, numchan))
     samples = np.transpose(samples)
 
     return samples, nsamples
-
